@@ -10,10 +10,13 @@
     "cf-typegen": "wrangler types"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "^1.0.0",
+    "@cloudflare/vitest-plugin": "^0.0.0",
     "@types/node": "^26.6.4",
     "typescript": "^5.5.2",
     "vitest": "~4.1.0",
-    "wrangler": "^4.148.0"
+    "wrangler": "^4.15.2"
+  },
+  "dependencies": {
+    "itty-router": "^5.0.24"
   }
 }
