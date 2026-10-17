@@ -1,12 +1,10 @@
 
-import { router, Page, LOCATION, HOURS_OPEN, HOURS_CLOSED, PHONE, S3_BUCKET_LINK } from "./index";
+import { router, Page, X_GRUBHUB_LINK, X_LOCATION, X_HOURS_OPEN, X_HOURS_CLOSED, X_PHONE, S3_BUCKET_LINK } from "./index";
 import { html, json } from "itty-router";
 import { a, form, img, input, tag } from "./tag";
 import { now_s } from "./common";
 import { Message } from "./schema";
 import { Uuid } from "./uuid";
-
-const GRUBHUB_LINK = "https://www.grubhub.com/restaurant/coops-pizzeria-1219-w-crawford-st-salina/10391280?utm_source=coopspizzeria&amp;utm_medium=content_owned&amp;utm_campaign=menushare&amp;utm_content=share-link";
 
 router.get("/", (req, env, ctx) => {
 	const date = (function () {
@@ -102,9 +100,9 @@ router.get("/", (req, env, ctx) => {
 		tag("i"),
 		tag("div",
 			tag("h1", "Come Grab A Pizza Pie!"),
-			tag("p", "Location: " + LOCATION),
-			tag("p", "Hours: Open " + HOURS_OPEN + ", Closed " + HOURS_CLOSED),
-			tag("p", "Phone: " + PHONE),
+			tag("p", "Location: " + X_LOCATION),
+			tag("p", "Hours: Open " + X_HOURS_OPEN + ", Closed " + X_HOURS_CLOSED),
+			tag("p", "Phone: " + X_PHONE),
 		).attr("id", "location"),
 		tag("i"),
 		tag("div",
@@ -114,7 +112,7 @@ router.get("/", (req, env, ctx) => {
 			),
 		).attr("id", "about"),
 		tag("div",
-			a(GRUBHUB_LINK,
+			a(X_GRUBHUB_LINK,
 				tag("div",
 					tag("p", "Takeout/Delivery"),
 					img("/static/images/grubhub.png").attrs({ "height": "30px", "alt": "Grubhub Logo" }),

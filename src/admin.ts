@@ -1,5 +1,5 @@
 
-import { IRequest, RequestHandler } from "itty-router";
+import { html, IRequest, RequestHandler } from "itty-router";
 import { CFArgs, router } from "./index";
 import { get_cookie } from "./common";
 import { Admin } from "./schema";
@@ -7,9 +7,7 @@ import { Admin } from "./schema";
 const SESSION_COOKIE_NAME = "session_id";
 
 const withAdmin: RequestHandler<IRequest, CFArgs> = async (req, env, ctx) => {
-	const r = () => new Response(null, {
-		headers: { "Location": "/admin/login" },
-	});
+	const r = () => html();
 	// Get session id
 	const session_id = get_cookie(req, SESSION_COOKIE_NAME);
 	if (session_id === null) return r();
@@ -26,7 +24,7 @@ const withAdmin: RequestHandler<IRequest, CFArgs> = async (req, env, ctx) => {
 	req.admin = admin;
 };
 
-router.get("/admin", (req, env, ctx) => {
+router.get("/admin", withAdmin, (req, env, ctx) => {
 	// if logged in: Dashboard
 	// else: Login Page
 });

@@ -1,0 +1,81 @@
+Lunch
+  Pizza & Salad Combos
+    Option 1
+      Pepperoni Heaven: 849
+      Beef: 799
+      Italian Sausage: 799
+      Quattro: 749
+      Mushroom: 889
+      Veggie: 949
+      Basil Pesto: 969
+      2 Toppings: 949
+      3 Toppings: 989
+      4 Toppings: 999
+		Option 2
+		  Add Soft Drink: +149
+	Pizza
+	  Build Your Own
+	    8-inch: 799
+        Add Topping: +99 [0..6]
+	    10-inch: 1199
+        Add Topping: +199 [0..6]
+      14-inch: 1699
+        Add Topping: +249 [0..6]
+    Speciality
+      The Islander
+        10-inch: 1499
+        14-inch: 2200
+      Original Supreme
+        10-inch: 1499
+        14-inch: 2349
+      The Meatatarian
+        10-inch: 1599
+        14-inch: 2499
+  Calzone
+    Traditional: 899
+    Build Your Own: 1049
+    Meatatarian: 1199
+  Sandwich
+    Option 1
+      Italian Master: 949  <-- menu_items(name: Sandwich - Italian Master, option_id: Points to option 2)
+      Honeycomb: 899       <-- menu_items(name: Sandwich - Honeycomb, option_id: Points to option 2)
+      Meatball Grinder: 999
+      Deluxe Italian: 999
+      Ham & Cheese: 849
+      Gyros: 999
+      Chicken, Bacon, Ranch: 949
+    Option 2
+      Upgrade Side to Side-Salad: +149
+  Pasta
+    Chicken Alfredo: 999
+    Meatballs & Sausage: 899
+    Penne Italiano: 949
+  Salad
+    Greek
+      Half: 799
+      Full: 999
+    Side Salad: 549
+      Add Grilled Chicken: +249
+  Side
+    Garlic Breadsticks
+      4-piece: 499
+      8-piece: 799
+      20-piece: 999
+    Cinnamon Sticks
+      4-piece: 699
+      8-piece: 999
+      20-piece: 1399
+    Cheese Sticks
+      4-piece: 699
+      8-piece: 899
+  Drink
+    Soft Drink: 249
+    Beer 1: 349
+    Beer 2: 399
+  Kid's Meal
+    Option 1
+      1-Topping Pizza: 469
+      Pasta: 499
+      Chicken Nuggets: 489
+    Option 2
+      Upgrade Soft Drink to Lemonade: +99
