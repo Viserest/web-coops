@@ -17,6 +17,7 @@
     "wrangler": "^4.151.1"
   },
   "dependencies": {
+    "drizzle-orm": "^0.45.4",
     "itty-router": "^5.0.24"
   }
 }

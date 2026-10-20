@@ -1,10 +1,65 @@
 
-import { router, Page, X_GRUBHUB_LINK, X_LOCATION, X_HOURS_OPEN, X_HOURS_CLOSED, X_PHONE, S3_BUCKET_LINK } from "./index";
 import { html, json } from "itty-router";
-import { a, form, img, input, tag } from "./tag";
-import { now_s } from "./common";
-import { Message } from "./schema";
+import { and, eq, getTableColumns } from "drizzle-orm";
+import { getDb, router, X_OPTIONS, now_s } from "./index";
+import { Element, form, Node, tag } from "./tag";
+import * as schema from "./schema";
 import { Uuid } from "./uuid";
+
+interface Details {
+	title?: string;
+	url?: string;
+}
+
+/**
+ * Default website page
+ *
+ * @param children Array of HTML Nodes
+ * @returns Html HTML Element
+ */
+export function Page(details: Details, ...children: Node[]): Element {
+	const title = ((details.title) ? details.title + " | " : "") + "Coop's Pizzeria";
+	const url = X_OPTIONS.BASE_URL + details.url;
+	return tag("html", { "lang": "en" },
+		tag("head", {},
+			// page config
+			tag("meta", { "charset": "utf-8" }),
+			tag("link", { "name": "viewport", "content": "width=device-width, initial-scale=1" }),
+			tag("link", { "rel": "canonical", "href": url }),
+			// social sharing
+			tag("title", {}, title),
+			tag("meta", { "name": "description", "content": X_OPTIONS.DESCRIPTION }),
+			tag("meta", { "property": "og:title", "content": title }),
+			tag("meta", { "property": "og:description", "content": X_OPTIONS.DESCRIPTION }),
+			tag("meta", { "property": "og:url", "content": url }),
+			tag("meta", { "property": "og:type", "content": "website" }),
+			// stylesheets
+			tag("link", { "rel": "stylesheet", "href": "/css/normalize.css" }),
+			tag("link", { "rel": "stylesheet", "href": "/css/skeleton.css" }),
+			tag("link", { "rel": "stylesheet", "href": "/css/style.css" }),
+		),
+		tag("body", {},
+			tag("div", { "id": "header" },
+				tag("p", {}, "Phone: " + X_OPTIONS.PHONE),
+				tag("p", {}, "Location: " + X_OPTIONS.LOCATION),
+				tag("p", {}, "Hours: Open " + X_OPTIONS.HOURS_OPEN + ", Closed " + X_OPTIONS.HOURS_CLOSED),
+			),
+			tag("div", { "id": "title" },
+				tag("img", { "src": "/images/logo.png", "alt": "Coop's Pizzeria Logo" }),
+				tag("h1", {}, "Taste The Difference"),
+			),
+			tag("i", {}),
+			tag("div", { "id": "entry" },
+				...children,
+			),
+			tag("i", {}),
+			tag("div", { "id": "footer" },
+				tag("p", {}, "Copyright &copy; 2026 Cooper's Pizzeria \"Coop's Pizzeria\""),
+				tag("p", {}, "Site built by Seth Cooper"),
+			),
+		)
+	);
+}
 
 router.get("/", (req, env, ctx) => {
 	const date = (function () {
@@ -29,150 +84,154 @@ router.get("/", (req, env, ctx) => {
 		});
 	})();
 
-	return html(Page(
-		tag("div",
-			tag("div",
-				tag("h2", "Lunch Menu"),
-				tag("p", "11AM - 3PM"),
-				a("/menu/lunch",
-					img("/static/images/menu_lunch.jpg").attr("alt", "Lunch Menu"),
+	return Page({ title: undefined, url: "/" },
+		tag("div", { "id": "menu" },
+			tag("div", {},
+				tag("h2", {}, "Lunch Menu"),
+				tag("p", {}, "11AM - 3PM"),
+				tag("a", { "href": "/menu/lunch" },
+					tag("img", { "src": "/static/images/menu_lunch.jpg", "alt": "Lunch Menu" }),
 				),
 			),
-			tag("i"),
-			tag("div",
-				tag("h2", "Dinner Menu"),
-				tag("p", "3PM - Closing"),
-				a("/menu/dinner",
-					img("/static/images/menu_dinner.jpg").attr("alt", "Dinner Menu"),
+			tag("i", {}),
+			tag("div", {},
+				tag("h2", {}, "Dinner Menu"),
+				tag("p", {}, "3PM - Closing"),
+				tag("a", { "href": "/menu/dinner" },
+					tag("img", { "src": "/static/images/menu_dinner.jpg", "alt": "Dinner Menu" }),
 				),
 			),
-			tag("i"),
-			tag("div",
-				tag("h2", "Specials Menu"),
-				tag("p", "Daily"),
-				a("/menu/specials",
-					img("/static/images/menu_specials.jpg").attr("alt", "Specials Menu"),
+			tag("i", {}),
+			tag("div", {},
+				tag("h2", {}, "Specials Menu"),
+				tag("p", {}, "Daily"),
+				tag("a", { "href": "/menu/specials" },
+					tag("img", { "src": "/static/images/menu_specials.jpg", "alt": "Specials Menu" }),
 				),
 			),
-		).attr("id", "menu"),
-		tag("i"),
-		tag("div",
-			tag("div",
-				tag("/static/images/starburst.png").attr("alt", "Newsletter Starburst"),
-				tag("h1", "Subscribe to our Newsletter!"),
+		),
+		tag("i", {}),
+		tag("div", { "id": "newsletter" },
+			tag("div", {},
+				tag("img", { "src": "/static/images/starburst.png", "alt": "Newsletter Starburst" }),
+				tag("h1", {}, "Subscribe to our Newsletter!"),
 			),
 			form({
 				href: "/api/subscribe",
 				method: "POST",
 				submit_text: "Join",
 			},
-				input("text").attrs({ "name": "name", "placeholder": "John Smith", "required": "" }),
-				input("email").attrs({ "name": "email", "placeholder": "john@smith.com", "required": "" }),
+				tag("input", { "type": "text", "name": "name", "placeholder": "John Smith", "required": "" }),
+				tag("input", { "type": "email", "name": "email", "placeholder": "john@smith.com", "required": "" }),
 			),
-		).attr("id", "newsletter"),
-		tag("i"),
-		((list) => tag("div",
-			...list.map(([link, alt]) => img("/static/images/" + link).attr("alt", alt)),
-		).attr("id", "photos"))([
-			["mexican_pizza.png", "Mexican Pizza"],
-			["wings_tray.png", "Wings on tray"],
-			["deepdish.png", "Deep Dish Pizza"],
-			["pepperoni.png", "Pepperoni Pizza"],
-			["salad.jpg", "Salad"],
-			["sandwich.jpg", "Sandwich"],
-			["wings_mesh.jpg", "Wings on mesh"],
-			["pasta.jpg", "Pasta"],
-		]),
-		tag("i"),
-		tag("div",
-			tag("div",
-				tag("h1", "- Open Mic Night -"),
-				tag("h1", date),
-				tag("h3", "Every 1st & 3rd Thursday Night from 6-9PM"),
-				tag("h4", "You can't beat good music and great pizza", tag("br"), "Musicians come in, sign up, and play free open mic!"),
-				tag("h2", "Hosted by Salina's Randy Baldwin"),
+		),
+		tag("i", {}),
+		((list) => tag("div", { "id": "photos" },
+			...list.map(([link, alt]) => tag("img", { "src": "/static/images/" + link, "alt": alt })),
+		))(X_OPTIONS.PHOTOS_FOOD),
+		tag("i", {}),
+		tag("div", { "id": "openmic" },
+			tag("div", {},
+				tag("h1", {}, "- Open Mic Night -"),
+				tag("h1", {}, date),
+				tag("h3", {}, "Every 1st & 3rd Thursday Night from 6-9PM"),
+				tag("h4", {}, "You can't beat good music and great pizza", tag("br", {}), "Musicians come in, sign up, and play free open mic!"),
+				tag("h2", {}, "Hosted by Salina's Randy Baldwin"),
 			),
-			tag("div",
-				img("/static/images/open_mic_1.jpg").attr("id", "Open Mic Night"),
-				img("/static/images/open_mic_2.jpg").attr("id", "Open Mic Night"),
+			tag("div", {},
+				tag("img", { "src": "/static/images/open_mic_1.jpg", "id": "Open Mic Night" }),
+				tag("img", { "src": "/static/images/open_mic_2.jpg", "id": "Open Mic Night" }),
 			),
-		).attr("id", "openmic"),
-		tag("i"),
-		tag("div",
-			tag("h1", "Come Grab A Pizza Pie!"),
-			tag("p", "Location: " + X_LOCATION),
-			tag("p", "Hours: Open " + X_HOURS_OPEN + ", Closed " + X_HOURS_CLOSED),
-			tag("p", "Phone: " + X_PHONE),
-		).attr("id", "location"),
-		tag("i"),
-		tag("div",
-			tag("div",
-				tag("p", "Our slogan \"Taste The Difference!\" is what we strive for everyday. One thing is for sure, this will be some of the best food you will ever eat!"),
-				tag("p", "All homemade dough, sauces, and dressings combined with the best ingredients separates us from the competition."),
+		),
+		tag("i", {}),
+		tag("div", { "id": "location" },
+			tag("h1", {}, "Come Grab A Pizza Pie!"),
+			tag("p", {}, "Location: " + X_OPTIONS.LOCATION),
+			tag("p", {}, "Hours: Open " + X_OPTIONS.HOURS_OPEN + ", Closed " + X_OPTIONS.HOURS_CLOSED),
+			tag("p", {},"Phone: " + X_OPTIONS.PHONE),
+		),
+		tag("i", {}),
+		tag("div", { "id": "about" },
+			tag("div", {},
+				tag("p", {}, "Our slogan \"Taste The Difference!\" is what we strive for everyday. One thing is for sure, this will be some of the best food you will ever eat!"),
+				tag("p", {}, "All homemade dough, sauces, and dressings combined with the best ingredients separates us from the competition."),
 			),
-		).attr("id", "about"),
-		tag("div",
-			a(X_GRUBHUB_LINK,
-				tag("div",
-					tag("p", "Takeout/Delivery"),
-					img("/static/images/grubhub.png").attrs({ "height": "30px", "alt": "Grubhub Logo" }),
-				).attr("class", "phone"),
-				tag("div",
-					tag("p", "Order Takeout or Delivery"),
-					img("/static/images/grubhub.png").attrs({ "height": "60px", "alt": "Grubhub Logo" }),
-				).attr("class", "large"),
+		),
+		tag("div", { "id": "grubhub" },
+			tag("a", { "href": X_OPTIONS.GRUBHUB_URL },
+				tag("div", { "class": "phone" },
+					tag("p", {}, "Takeout/Delivery"),
+					tag("img", { "src": "/static/images/grubhub.png", "height": "30px", "alt": "Grubhub Logo" }),
+				),
+				tag("div", { "class": "large" },
+					tag("p", {}, "Order Takeout or Delivery"),
+					tag("img", { "src": "/static/images/grubhub.png", "height": "60px", "alt": "Grubhub Logo" }),
+				),
 			),
-		).attr("id", "grubhub"),
-	)); // returns html
+		),
+	); // returns Page
 });
 
 router.get("/menu/:name", (req, env, ctx) => {
 	const name = req.params["name"];
+	const name_cap = (name[0]?.toUpperCase() ?? "") + name.slice(1) + " Menu";
+
 	// Invalid menu name
 	if (!["lunch", "dinner", "specials"].includes(name)) {
-		return html(Page(
-			tag("h2", "Not Found!"),
-			tag("p", name, "Menu is invalid or not found."),
-		));
+		return Page({ title: "Not Found" },
+			tag("h2", {}, "Not Found!"),
+			tag("p", {}, name_cap, " is invalid or not found."),
+		);
 	}
+
 	// Valid menu name
-	return html(Page(
-		img("/static/images/menu_" + name + ".png").attrs({ "alt": name + "Menu", "id": "menu_image" }),
-	));
+	return Page({
+		title: name_cap,
+		url: "/menu/" + name,
+	},
+		tag("img", { "src": "/static/images/menu_" + name + ".png", "alt": name_cap, "id": "menu_image" }),
+	);
 });
 
 router.get("/newsletter/:id_link", async (req, env, ctx) => {
-	const id_link = req.params["id_link"];
-	const message: Message | null = await env.DB
-		.prepare("SELECT message JOIN links ON message.id = links.message_id WHERE link.id = ? LIMIT 1")
-		.bind(id_link)
-		.first();
-	if (message === null) {
-		return html(Page(
-			tag("h1", "Not Found!"),
-			tag("p", "This is not the message you are looking for"),
+	// params
+	const id_link = Uuid.fromString(req.params["id_link"]);
+
+	// database calls
+	const db = getDb(env);
+	const result = await db
+  	.select({ ...getTableColumns(schema.messages) })
+  	.from(schema.messages)
+  	.innerJoin(schema.links, eq(schema.messages.id, schema.links.messageId))
+  	.where(eq(schema.links.id, id_link.toBytes()))
+  	.limit(1)
+  	.get();
+	if (!result) {
+		return html(Page({ title: "Not Found" },
+			tag("h2", {}, "Not Found!"),
+			tag("p", {}, "This is not the message you are looking for"),
 		));
 	}
 
-	return html(Page(
-		img(S3_BUCKET_LINK + message.file_id).attr("alt", "Newsletter Image"),
-		tag("h2", message.subject),
-		tag("p", message.text),
-		a("/confirm/" + id_link, "Click to Unsubscribe"),
+	// view newsletter
+	return html(Page({ title: "Newsletter" },
+		tag("img", { "src": X_OPTIONS.S3_BUCKET_URL + result.fileId, "alt": "Newsletter Image" }),
+		tag("h2", {}, result.subject),
+		tag("p", {}, result.textbody),
+		tag("a", { "href": "/confirm/" + id_link }, "Click to Unsubscribe"),
 	));
 });
 
 router.get("/confirm/:id_link", (req, env, ctx) => {
 	const id_link = req.params["id_link"];
-	return html(Page(
-		tag("h2", "Unsubscribe From"),
-		tag("h2", "Our Newsletter"),
+	return html(Page({ title: "Newsletter" },
+		tag("h2", {}, "Unsubscribe From Our Newsletter"),
 		form({
 			href: "/api/unsubscribe",
 			method: "POST",
 			submit_text: "Click to Unsubscribe",
 		},
-			input("text").attrs({ "value": id_link, "hidden": "" }),
+			tag("input", { "type": "text", "value": id_link, "hidden": "" }),
 		),
 	));
 });
@@ -180,44 +239,56 @@ router.get("/confirm/:id_link", (req, env, ctx) => {
 
 
 router.post("/api/subscribe", async (req, env, ctx) => {
+	const r = (message: string, status: number = 400) => json({ message }, { status });
 	const data: { name: string | null, email: string | null } = await req.json();
 
 	// Name field
 	const name = data["name"];
-	if (name === null) return json({ "message": "Name field is required" });
-	if (!/^[a-zA-Z ]+$/.test(name)) return json({ "message": "Name field is invalid" });
+	if (name === null) return r("Name field is required");
+	if (!/^[a-zA-Z ]+$/.test(name)) return r("Name field is invalid");
 
 	// Email field
 	const email = data["email"];
-	if (email === null) return json({ "message": "Email field is required" });
-	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ "message": "Email field is invalid" });
+	if (email === null) return r("Email field is required");
+	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return r("Email field is invalid");
 
-	// Save it
-	const client_ip = req.headers.get("cf-connecting-ip");
-	const result = await env.DB
-		.prepare("INSERT INTO subscriber (id, created_at, email, name, ip_addr) VALUES (?, ?, ?, ?, ?)")
-		.bind(Uuid.randomv4(), now_s(), email, name, client_ip)
+	// database calls
+	const db = getDb(env);
+	const result = await db.insert(schema.users).values({
+		id: Uuid.randomv4().toBytes(),
+		name,
+		email,
+		createdAt: now_s(),
+	})
 		.run();
-	if (!result.success) return json({ "message": "Error subscribing" });
+	if (!result.success) return r("Error subscribing", 500);
 
-	return json({ "message": "Congrats! You're now subscribed!" });
+	return r("Congrats! You're now subscribed!", 200);
 });
 
 
 
 router.post("/api/unsubscribe", async (req, env, ctx) => {
+	const r = (message: string, status: number = 400) => json({ message }, { status });
 	const data: { id_link: string | null } = await req.json();
-	const id_link = data["id_link"];
-	if (id_link === null) return json({ "message": "id_link field is required" });
 
-	const result = await env.DB
-		.prepare(`UPDATE subscriber
-		  JOIN link ON subscriber.id = link.subscriber_id
-		  SET subscriber.deleted_at = ?
-		  WHERE link.id = ?`)
-		.bind(now_s(), id_link)
+	// Id of link
+	const a = data["id_link"];
+	if (a === null) return r("id_link field is required");
+	const id_link = Uuid.fromString(a);
+
+	// database calls
+	const db = getDb(env);
+	const result = await db
+		.update(schema.users)
+		.set({ deletedAt: now_s() })
+		.from(schema.links)
+		.where(and(
+			eq(schema.links.userId, schema.users.id),
+    	eq(schema.links.id, id_link.toBytes()),
+	))
 		.run();
-	if (!result.success) return json({ "message": "Error unsubscribing" });
+	if (!result.success) return r("Error unsubscribing", 500);
 
-	return json({ "message": "Now unsubscribed" });
+	return r("Now unsubscribed", 200);
 });

@@ -1,4 +1,8 @@
 
+--
+-- newsletter messages
+--
+
 CREATE TABLE IF NOT EXISTS messages (
     id BLOB PRIMARY KEY CHECK (length(id) = 16),
     -- counts
@@ -11,8 +15,13 @@ CREATE TABLE IF NOT EXISTS messages (
     -- timestamps
     created_at INT NOT NULL,
     updated_at INT,
-    deleted_at INT,
+    deleted_at INT
 );
+
+--
+-- newsletter links
+-- * Links a message and user
+--
 
 CREATE TABLE IF NOT EXISTS links (
 	-- ids
@@ -23,5 +32,5 @@ CREATE TABLE IF NOT EXISTS links (
 	views INT NOT NULL DEFAULT 0,
 	-- timestamps
 	created_at INT NOT NULL,
-	UNIQUE (user_id, message_id),
+	UNIQUE (user_id, message_id)
 );

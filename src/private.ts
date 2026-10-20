@@ -1,35 +1,41 @@
 
 import { html, IRequest, RequestHandler } from "itty-router";
-import { CFArgs, router } from "./index";
-import { get_cookie } from "./common";
-import { Admin } from "./schema";
-
-const SESSION_COOKIE_NAME = "session_id";
+import { CFArgs, router, X_OPTIONS } from "./index";
 
 const withAdmin: RequestHandler<IRequest, CFArgs> = async (req, env, ctx) => {
 	const r = () => html();
 	// Get session id
-	const session_id = get_cookie(req, SESSION_COOKIE_NAME);
+	const session_id = get_cookie(req, X_OPTIONS.SESSION_COOKIE_NAME);
 	if (session_id === null) return r();
 
-	const admin: Admin | null = await env.DB
-		.prepare(`SELECT admin.*
-		  FROM sesssion
-		  JOIN session ON admin.id = session.admin_id
-		  WHERE session.id = ?`)
+	const user: User | null = await env.DB
+		.prepare(`SELECT users.*
+		  FROM sessions
+		  JOIN sessions ON users.id = sessions.user_id
+		  WHERE sessions.id = ? AND users.role = ${Role.Admin}`)
 		.bind(session_id)
 		.first();
-	if (admin === null) return r();
+	if (user === null) return r();
 
-	req.admin = admin;
+	req.user = user;
 };
 
 router.get("/admin", withAdmin, (req, env, ctx) => {
 	// if logged in: Dashboard
 	// else: Login Page
 });
+
+// Message
 router.get("/api/message", withAdmin, (req, env, ctx) => { });
+router.post("/api/message", withAdmin, (req, env, ctx) => { });
+router.get("/api/message/:id", withAdmin, (req, env, ctx) => { });
+router.put("/api/message/:id", withAdmin, (req, env, ctx) => { });
+router.delete("/api/message/:id", withAdmin, (req, env, ctx) => { });
+router.post("/api/message/:id/send", withAdmin, (req, env, ctx) => { });
+
+// User
 router.get("/api/subscriber", withAdmin, (req, env, ctx) => { });
+router.post("/api/subscriber", withAdmin, (req, env, ctx) => { });
 router.get("/api/link", withAdmin, (req, env, ctx) => { });
 router.get("/message/:id_message/send", withAdmin, (req, env, ctx) => { });
 

@@ -13,30 +13,20 @@ export class Element {
 		this.children = [];
 		return this;
 	}
-	// Single attribute
-	attr(key: string, value: string): Element {
-		if (this.attributes[key]) {
-			this.attributes[key] = this.attributes[key] + " " + value;
-		}
-		else {
-			this.attributes[key] = value;
-		}
-		return this;
-	}
-	// Many attributes
-	attrs(entries: Record<string, string>): Element {
+	// Modify attributes
+	attributeAppend(entries: Record<string, string>): Element {
 		for (const [key, value] of Object.entries(entries)) {
-			this.attr(key, value);
+			if (this.attributes[key]) {
+				this.attributes[key] = this.attributes[key] + " " + value;
+			}
+			else {
+				this.attributes[key] = value;
+			}
 		}
 		return this;
 	}
-	// Push child
-	appendChild(child: Node): Element {
-		this.children.push(child);
-		return this;
-	}
-	// Push children
-	appendChildren(...children: Node[]): Element {
+	// Modify children
+	childrenAppend(...children: Node[]): Element {
 		this.children.push(...children);
 		return this;
 	}
@@ -65,43 +55,11 @@ export class Element {
   }
 }
 
-export function tag(name: string, ...children: Node[]): Element {
+export function tag(name: string, attributes: Record<string, string>, ...children: Node[]): Element {
 	let result = new Element(name);
-	result.appendChildren(...children);
+	if (attributes) result.attributeAppend(attributes);
+	result.childrenAppend(...children);
 	return result;
-}
-
-
-/**
- * Skeleton CSS div with a row class
- *
- * @param children Array of HTML Nodes
- * @returns Image HTML Element
- */
-export function row(...children: Node[]): Element {
-	return tag("div", ...children).attr("class", "row");
-}
-
-/**
- * Archor HTML Element with an href URL
- *
- * @param href URL
- * @param children Array of HTML Nodes
- * @returns Image HTML Element
- */
-export function a(href: string, ...children: Node[]): Element {
-	return tag("a", ...children).attr("href", href);
-}
-
-/**
- * Image HTML Element with a src URL
- *
- * @param href URL
- * @param children Array of HTML Nodes
- * @returns Image HTML Element
- */
-export function img(href: string, ...children: Node[]): Element {
-	return tag("img", ...children).attr("src", href);
 }
 
 /**
@@ -140,8 +98,8 @@ export function form(options: FormOptions, ...children: Node[]): Element {
 	const submit_id = Uuid.randomv4();
 	const message_id = Uuid.randomv4();
 	const ids: string[] = [];
-	const result = tag("form",
-		tag("p", options.message_text || "").attrs({ "id": message_id.toString() }),
+	const result = tag("form", {},
+		tag("p", { "id": message_id.toString() }, options.message_text || ""),
 		...children
 	);
 
@@ -150,14 +108,14 @@ export function form(options: FormOptions, ...children: Node[]): Element {
 		.concat(result.queryAll("textarea"))
 		?.forEach((a) => {
 			const id = Uuid.randomv4();
-			a.attr("id", id.toString());
+			a.attributeAppend({ "id": id.toString() });
 			ids.push(id.toString());
 		});
 
 	// Add submit and script for submitting
-	result.appendChildren(
-		tag("input").attrs({ "type": "submit", "id": submit_id.toString(), "value": options.submit_text || "Submit" }),
-		tag("script").attrs({
+	result.childrenAppend(
+		tag("input", { "type": "submit", "id": submit_id.toString(), "value": options.submit_text || "Submit" }),
+		tag("script", {
 			"src": "/js/form.js",
 			"data-href": options.href,
 			"data-method": options.method,
@@ -170,18 +128,6 @@ export function form(options: FormOptions, ...children: Node[]): Element {
 }
 
 /**
- * Input HTML Element with a type attribute
- * (https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input#input_types)
- *
- * @param type Input HTML Element Type
- * @param children Array of HTML Nodes
- * @returns Input HTML Element
- */
-export function input(type: string, ...children: Node[]): Element {
-	return tag("input", ...children).attr("type", type);
-};
-
-/**
  * Builds a HTML table using an Array of items. The callback function is called on each item
  *
  * @param table Array of items the table is built on
@@ -189,7 +135,7 @@ export function input(type: string, ...children: Node[]): Element {
  * @returns Table HTML Element
  */
 export function table<T>(table: T[], callback: (value: T) => Element): Element {
-	return tag("table",
+	return tag("table", {},
 		...table.map((a) => callback(a)),
 	);
 }

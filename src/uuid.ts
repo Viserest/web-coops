@@ -4,7 +4,7 @@ import { Buffer } from "node:buffer";
 export class Uuid {
   public readonly value: Buffer;
 
-  private constructor(value: Uint8Array) {
+  private constructor(value: Buffer) {
     if (value.length !== 16) {
       throw new Error("Uuid must contain exactly 16 bytes");
     }
@@ -24,12 +24,12 @@ export class Uuid {
     return new Uuid(bytes);
   }
 
-  public static fromBytes(bytes: Uint8Array): Uuid {
+  public static fromBytes(bytes: Buffer): Uuid {
     if (bytes.length !== 16) {
       throw new Error("Uuid must contain exactly 16 bytes");
     }
 
-    return new Uuid(Uint8Array.from(bytes));
+    return new Uuid(Buffer.from(bytes));
   }
 
   public static fromString(value: string): Uuid {
@@ -50,8 +50,8 @@ export class Uuid {
 		return new Uuid(Buffer.from(value, "hex"));
   }
 
-  public toBytes(): Uint8Array {
-    return Uint8Array.from(this.value);
+  public toBytes(): Buffer {
+    return Buffer.from(this.value);
   }
 
   public toString(): string {
