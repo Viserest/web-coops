@@ -1,14 +1,14 @@
 
-import { and, eq, getTableColumns, isNull, or, sql } from "drizzle-orm";
+import * as d from "drizzle-orm";
 
-import * as schema from "./schema";
 import { Uuid } from "./uuid";
 import { tag } from "./tag";
-import { RequestDb, RequestUser, router, setDb, setUser } from "./context";
+import { defineForm } from "./form";
 import { handler } from "./handler";
 import { adminOnly, checkRole, hashPassword, isAsciiOrSpace, isEmail, nowSecs, reply, verifyPassword } from "./utils";
+import * as schema from "./schema";
+import { RequestDb, RequestUser, router, setDb, setUser } from "./context";
 import { X_OPTIONS } from "./index";
-import { defineForm } from "./form";
 
 /*
  * File system. Quick query instead of directly to r2 bucket
@@ -156,7 +156,7 @@ router.delete<RequestUser>("/api/v1/files/:id", setUser, async (req, env, ctx) =
 	// delete from d1
 	const result = await req.db
 		.delete(schema.files)
-		.where(eq(schema.files.id, id.toBytes()))
+		.where(d.eq(schema.files.id, id.toBytes()))
 		.run();
 	if (!result.success) return reply("Error deleting file", 500);
 
@@ -224,9 +224,9 @@ router.post<RequestDb>(unsubscribeForm.href, setDb, async (req, env, ctx) => {
 		.update(schema.users)
 		.set({ deletedAt: new Date() })
 		.from(schema.links)
-		.where(and(
-    	eq(schema.links.id, id_link.toBytes()),
-			eq(schema.links.userId, schema.users.id),
+		.where(d.and(
+    	d.eq(schema.links.id, id_link.toBytes()),
+			d.eq(schema.links.userId, schema.users.id),
 	))
 		.run();
 	if (!result.success) return reply("Error unsubscribing", 500);
@@ -348,11 +348,11 @@ router.post<RequestDb>(loginForm.href, setDb, async (req, env, ctx) => {
 
 	// get user
 	const user = await req.db
-		.select({ ...getTableColumns(schema.users) })
+		.select({ ...d.getTableColumns(schema.users) })
 		.from(schema.users)
-		.where(and(
-			eq(schema.users.email, normalizedEmail),
-			isNull(schema.users.deletedAt),
+		.where(d.and(
+			d.eq(schema.users.email, normalizedEmail),
+			d.isNull(schema.users.deletedAt),
 		))
 		.limit(1)
 		.get();
@@ -426,9 +426,9 @@ router.post<RequestUser>("/api/v1/messages/:id/send", setUser, async (req, env, 
 
 	// Database calls
 	const message = await req.db
-		.select({ ...getTableColumns(schema.messages) })
+		.select({ ...d.getTableColumns(schema.messages) })
 		.from(schema.messages)
-		.where(eq(schema.messages.id, messageId.toBytes()))
+		.where(d.eq(schema.messages.id, messageId.toBytes()))
 		.limit(1)
 		.get();
 	if (!message) return reply("Error finding message", 500);
@@ -455,9 +455,9 @@ router.post<RequestUser>("/api/v1/messages/:id/send", setUser, async (req, env, 
 
 	if (data.id_to) {
 		const user = await req.db
-			.select({ ...getTableColumns(schema.users) })
+			.select({ ...d.getTableColumns(schema.users) })
 			.from(schema.users)
-			.where(eq(schema.users.id, Uuid.fromString(data.id_to).toBytes()))
+			.where(d.eq(schema.users.id, Uuid.fromString(data.id_to).toBytes()))
 			.limit(1)
 			.get();
 		if (!user) return reply("Cannot find user", 400);
@@ -467,11 +467,11 @@ router.post<RequestUser>("/api/v1/messages/:id/send", setUser, async (req, env, 
 		return reply("Sent to user: " + user.email, 200);
 	} else {
 		const users = await req.db
-			.select({ ...getTableColumns(schema.users) })
+			.select({ ...d.getTableColumns(schema.users) })
 			.from(schema.users)
-			.where(or(
-				eq(schema.users.role, schema.Role.Subscriber),
-				eq(schema.users.role, schema.Role.Both),
+			.where(d.or(
+				d.eq(schema.users.role, schema.Role.Subscriber),
+				d.eq(schema.users.role, schema.Role.Both),
 			));
 
 		let i = 0;

@@ -106,6 +106,7 @@ src/          Website typescript code
   index.ts    Configurations as X_OPTIONS
   context.ts  Types, variables, and itty-router
   schema.ts   Website storage schemas
+  error.ts    The error page which intercepts all errors
   pages.ts    All pages, public and private
   apis.ts     All apis, public and private
   // utils:

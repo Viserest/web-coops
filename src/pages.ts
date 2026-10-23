@@ -1,14 +1,14 @@
 
 import { html, StatusError } from "itty-router";
-import { eq, getTableColumns } from "drizzle-orm";
+import * as d from "drizzle-orm";
 
-import * as schema from "./schema";
 import { Node, tag } from "./tag";
 import { Uuid } from "./uuid";
-import { createSetUser, RequestDb, RequestUser, router, setDb } from "./context";
 import { checkRole, redirect } from "./utils";
-import { X_OPTIONS } from "./index";
+import * as schema from "./schema";
+import { createSetUser, RequestDb, RequestUser, router, setDb } from "./context";
 import { loginForm, registerForm, subscribeForm, unsubscribeForm } from "./apis";
+import { X_OPTIONS } from "./index";
 
 interface Details {
 	title?: string;
@@ -26,11 +26,11 @@ export function Page(details: Details, ...children: Node[]): Response {
 	const title = (details.title ? details.title + " | " : "") + "Coop's Pizzeria";
 	const url = X_OPTIONS.BASE_URL + details.url;
 
-	return html(tag("html", { "lang": "en" },
+	return html("<!DOCTYPE html>" + tag("html", { "lang": "en" },
 		tag("head", {},
 			// page config
 			tag("meta", { "charset": "utf-8" }),
-			tag("link", { "name": "viewport", "content": "width=device-width, initial-scale=1" }),
+			tag("meta", { "name": "viewport", "content": "width=device-width, initial-scale=1" }),
 			tag("link", { "rel": "canonical", "href": url }),
 			// social sharing
 			tag("title", {}, title),
@@ -235,10 +235,10 @@ router.get<RequestDb>("/newsletter/:id_link", setDb, async (req, env, ctx) => {
 
 	// database calls
 	const result = await req.db
-  	.select({ ...getTableColumns(schema.messages) })
+  	.select({ ...d.getTableColumns(schema.messages) })
   	.from(schema.messages)
-  	.innerJoin(schema.links, eq(schema.messages.id, schema.links.messageId))
-  	.where(eq(schema.links.id, id_link.toBytes()))
+  	.innerJoin(schema.links, d.eq(schema.messages.id, schema.links.messageId))
+  	.where(d.eq(schema.links.id, id_link.toBytes()))
   	.limit(1)
   	.get();
 	if (!result) {

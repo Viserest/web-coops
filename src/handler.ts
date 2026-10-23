@@ -1,7 +1,7 @@
 
 import { IRequest, json, RouterType } from "itty-router";
-import { and, count, eq, getTableColumns, isNull } from "drizzle-orm";
 import { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
+import * as d from "drizzle-orm";
 
 import * as schema from "./schema";
 import { Bindings, Db } from "./context";
@@ -96,7 +96,7 @@ export function handler<R extends RouterType, T extends TableWithId>(
 	options: RouteOptions<T>,
 ): R {
 	const { table } = options;
-	const columns = getTableColumns(table) as Record<string, SQLiteColumn>;
+	const columns = d.getTableColumns(table) as Record<string, SQLiteColumn>;
 	const idCol = columns["id"]!;
 	const deletedKey = Object.keys(columns).find((k) => columns[k]!.name === "deleted_at");
 	const deletedCol = deletedKey ? columns[deletedKey] : undefined;
@@ -106,7 +106,7 @@ export function handler<R extends RouterType, T extends TableWithId>(
 	}
 
 	// Soft-deleted rows are hidden from list/read/update.
-	const notDeleted = deletedCol ? isNull(deletedCol) : undefined;
+	const notDeleted = deletedCol ? d.isNull(deletedCol) : undefined;
 
 	/** Columns to select: chosen fields, or the entire table. */
 	const selection = (fields?: readonly string[]) => {
@@ -165,7 +165,7 @@ export function handler<R extends RouterType, T extends TableWithId>(
 					.limit(limit)
 					.offset(offset);
 				const [{ total } = { total: 0 }] = await db
-					.select({ total: count() })
+					.select({ total: d.count() })
 					.from(table)
 					.where(notDeleted);
 
@@ -214,7 +214,7 @@ export function handler<R extends RouterType, T extends TableWithId>(
 				const [item] = await db
 					.select(selection(opt.fields))
 					.from(table)
-					.where(and(eq(idCol, id), notDeleted))
+					.where(d.and(d.eq(idCol, id), notDeleted))
 					.limit(1);
 				if (!item) return reply("Not found", 404);
 
@@ -242,7 +242,7 @@ export function handler<R extends RouterType, T extends TableWithId>(
 				const updated = await db
 					.update(table)
 					.set(data as unknown as Partial<T["$inferInsert"]>)
-					.where(and(eq(idCol, id), notDeleted))
+					.where(d.and(d.eq(idCol, id), notDeleted))
 					.returning({ id: idCol });
 				if (updated.length === 0) return reply("Not found", 404);
 
@@ -264,9 +264,9 @@ export function handler<R extends RouterType, T extends TableWithId>(
 					? await db
 							.update(table)
 							.set({ [deletedKey!]: nowSecs() } as unknown as Partial<T["$inferInsert"]>)
-							.where(and(eq(idCol, id), notDeleted))
+							.where(d.and(d.eq(idCol, id), notDeleted))
 							.returning({ id: idCol })
-					: await db.delete(table).where(eq(idCol, id)).returning({ id: idCol });
+					: await db.delete(table).where(d.eq(idCol, id)).returning({ id: idCol });
 				if (deleted.length === 0) return reply("Not found", 404);
 
 				return reply(opt.message ?? "Deleted", 200);

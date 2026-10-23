@@ -1,13 +1,13 @@
 
 import { AutoRouter, IRequest, RequestHandler } from "itty-router";
 import { DrizzleD1Database } from "drizzle-orm/d1";
-import { eq, getTableColumns } from "drizzle-orm";
+import * as d from "drizzle-orm";
 
-import * as schema from "./schema";
 import { Uuid } from "./uuid";
 import { createDb, getCookie, reply } from "./utils";
-import { X_OPTIONS } from "./index";
+import * as schema from "./schema";
 import { errorPage, rendered } from "./error";
+import { X_OPTIONS } from "./index";
 
 export interface Bindings {
 	DB: D1Database;
@@ -99,10 +99,10 @@ export function createSetUser<A extends AnyArgs = Args>(
 
 		// Get user
 		const result = await req.db
-			.select({ ...getTableColumns(schema.users) })
+			.select({ ...d.getTableColumns(schema.users) })
 			.from(schema.users)
-			.innerJoin(schema.sessions, eq(schema.users.id, schema.sessions.userId))
-			.where(eq(schema.sessions.id, idSession.toBytes()))
+			.innerJoin(schema.sessions, d.eq(schema.users.id, schema.sessions.userId))
+			.where(d.eq(schema.sessions.id, idSession.toBytes()))
 			.limit(1)
 			.get();
 		if (!result) return onError(req, ...args);

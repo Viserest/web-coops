@@ -1,10 +1,8 @@
-import { randomBytes } from "node:crypto";
-import { Buffer } from "node:buffer";
 
 export class Uuid {
-  public readonly value: Buffer;
+  public readonly value: Uint8Array;
 
-  private constructor(value: Buffer) {
+  private constructor(value: Uint8Array) {
     if (value.length !== 16) {
       throw new Error("Uuid must contain exactly 16 bytes");
     }
@@ -13,7 +11,7 @@ export class Uuid {
   }
 
   public static randomv4(): Uuid {
-    const bytes = randomBytes(16);
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
 
     // Uuid version 4
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
@@ -66,7 +64,7 @@ export class Uuid {
     ].join("-");
   }
 
-  public toHex(): string {
-    return this.value.toString("hex");
+	public toHex(): string {
+		return Array.from(this.value, b => b.toString(16).padStart(2, "0")).join("");
   }
 }

@@ -1,3 +1,7 @@
+import { html } from "itty-router";
+import { tag } from "./tag";
+import { esc } from "./utils";
+
 const TITLES: Record<number, string> = {
 	400: "Bad Request",
 	401: "Unauthorized",
@@ -12,15 +16,6 @@ const TITLES: Record<number, string> = {
 	503: "Service Unavailable",
 };
 
-const ESCAPES: Record<string, string> = {
-	"&": "&amp;",
-	"<": "&lt;",
-	">": "&gt;",
-	'"': "&quot;",
-	"'": "&#39;",
-};
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ESCAPES[c]);
-
 // Responses produced by errorPage, so `finally` doesn't render them twice
 export const rendered = new WeakSet<Response>();
 
@@ -29,38 +24,35 @@ export function errorPage(status: number, request: Request): Response {
 	const shownUrl = esc(url.origin + url.pathname); // no query string or hash
 	const title = TITLES[status] ?? "Error";
 
-	const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
-<title>${status} ${esc(title)}</title>
-<style>
-	body { font-family: system-ui, sans-serif; margin: 0; min-height: 100vh;
-		display: grid; place-items: center; text-align: center; }
-	h1 { font-size: 1.25rem; margin: 0 0 1rem; }
-	.code { font-size: 4rem; font-weight: 700; margin: 0; }
-	.url { color: #666; word-break: break-all; }
-</style>
-</head>
-<body>
-<main>
-	<h1>Something went wrong</h1>
-	<p class="code">${status}</p>
-	<p>${esc(title)}</p>
-	<p class="url">${shownUrl}</p>
-</main>
-</body>
-</html>`;
+	const res = html("<!DOCTYPE html>" + tag("html", { "lang": "en" },
+		tag("head", {},
+			tag("meta", { "charset": "utf-8" }),
+			tag("meta", { "name": "viewport", "content": "width=device-width, initial-scale=1" }),
+			tag("meta", { "name": "robots", "content": "noindex" }),
+			tag("title", {}, status + " " + esc(title)),
+			tag("style", {}, `body { font-family: system-ui, sans-serif; margin: 0; min-height: 100vh;
+				display: grid; place-items: center; text-align: center; }
+				h1 { font-size: 1.25rem; margin: 0 0 1rem; }
+				.code { font-size: 4rem; font-weight: 700; margin: 0; }
+				.url { color: #666; word-break: break-all; }`),
+		),
+		tag("body", {},
+			tag("main", {},
+				tag("h1", {}, "Something went wrong"),
+				tag("p", { "class": "code" }, status),
+				tag("p", {}, esc(title)),
+				tag("p", { "class": "url" }, shownUrl),
+			),
+		),
+	),
+		{
+			status,
+			headers: {
+				"cache-control": "no-store",
+			}
+		}
+	);
 
-	const res = new Response(html, {
-		status,
-		headers: {
-			"content-type": "text/html; charset=utf-8",
-			"cache-control": "no-store",
-		},
-	});
 	rendered.add(res);
 	return res;
 }

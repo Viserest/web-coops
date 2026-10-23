@@ -1,11 +1,11 @@
 
 import { json } from "itty-router";
 import { drizzle } from "drizzle-orm/d1";
-import { lt, sql } from "drizzle-orm";
+import * as d from "drizzle-orm";
 
 import * as schema from "./schema";
-import { HandlerContext } from "./handler";
 import { Bindings, Db } from "./context";
+import { HandlerContext } from "./handler";
 
 export function nowSecs(): number {
 	return Math.floor(Date.now() / 1000);
@@ -32,6 +32,15 @@ export const toInt = (v: unknown, fallback: number): number => {
 };
 
 // verification stuff
+
+const ESCAPES: Record<string, string> = {
+	"&": "&amp;",
+	"<": "&lt;",
+	">": "&gt;",
+	'"': "&quot;",
+	"'": "&#39;",
+};
+export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ESCAPES[c]);
 
 export const isAsciiOrSpace = (v: string): boolean => {
 	return /^[a-zA-Z ]+$/.test(v);
@@ -161,5 +170,5 @@ export function needsRehash(stored: string): boolean {
 
 export async function purgeExpiredSessions(db: Db) {
 	await db.delete(schema.sessions)
-		.where(lt(schema.sessions.expiresAt, sql`unixepoch()`));
+		.where(d.lt(schema.sessions.expiresAt, d.sql`unixepoch()`));
 }
