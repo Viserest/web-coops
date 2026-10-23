@@ -1,0 +1,177 @@
+
+/*
+ * Yellow       #FFBA40
+ * Blue light   #AEC0E1
+ * Blue         #92ACD8
+ * Blue dark    #6A84BB
+ * Red light    #F2756A
+ * Red dark     #CD342D
+ * Grey light   #E0E0DF
+ * Grey dark    #898888
+ * Black        #29232B
+ */
+
+/* Theme is light */
+html[theme="light"] {
+	--bg: white;
+	--bg-raised: #dddddd;
+	--bg-opposite: black;
+	--text: #181818;
+	--text-dim: #555555;
+	--text-opposite: white;
+	--accent: slateblue;
+}
+
+/* Theme is dark */
+html {
+	--bg: black;
+	--bg-raised: #181818;
+	--bg-opposite: white;
+	--text: #e8e8ec;
+	--text-dim: #9a9aa5;
+	--text-opposite: black;
+	--accent: slateblue;
+}
+
+body {
+	background-color: var(--bg);
+	color: var(--text);
+}
+
+h1,h2,h3,h4,h5,h6,p {
+	text-align: center;
+	margin: 0.2rem;
+}
+
+#headers,
+#links {
+	text-align: center;
+}
+
+#headers * {
+	display: inline-block;
+	margin: 0;
+	padding: 0.15rem 1rem;
+}
+
+#headers,
+#links {
+	padding-top: 1.5rem;
+}
+
+#links a {
+	position: relative;
+	padding: 1rem 3rem;
+	color: var(--text);
+	text-decoration: none;
+	border-bottom: 3px solid var(--bg-raised);
+}
+
+#links a:hover {
+	color: var(--text-dim);
+	border-bottom: 3px solid var(--accent);
+}
+
+#hero img {
+	display: block;
+	width: 80%;
+	max-width: 800px;
+	margin: 0 auto;
+}
+
+#blah {
+	position: absolute;
+	top: 1rem;
+	left: 6rem;
+	width: 130px;
+}
+
+#menu hr {
+	display: none;
+}
+
+#menu img {
+	width: 100%;
+}
+
+#newsletter img {
+	display: block;
+	width: 50%;
+	margin: 0 auto;
+}
+
+#newsletter form {
+	color: var(--text-opposite);
+	text-align: center;
+}
+
+#newsletter form * {
+	margin: 0.5rem;
+}
+
+#photos {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: 1rem;
+}
+
+#photos img {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+
+
+#openmic div:first-child {
+	margin-bottom: 3rem;
+}
+
+#grubhub {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 10px;
+    background: var(--bg);
+    border: 1px solid var(--bg-opposite);
+}
+
+#grubhub a {
+    color: inherit;
+    text-decoration: none;
+}
+
+#grubhub p {
+    margin: 0;
+}
+
+#grubhub .large {
+    display: none;
+}
+
+#footer {
+	padding-bottom: 5rem;
+}
+
+@media (min-width: 650px) {
+	#grubhub .phone {
+    	display: none;
+	}
+	#grubhub .large {
+    	display: block;
+	}
+}
+
+/* Larger than desktop */
+@media (min-width: 1000px) {
+	#menu hr {
+		display: unset;
+	}
+
+	#menu {
+        max-width: 2000px;
+        max-height: 500px;
+        overflow: hidden;
+        margin: 0 auto;
+        mask-image: linear-gradient(180deg, rgba(0,0,0,1) 80%, rgba(0,0,0,0) 100%);
+    }
+}

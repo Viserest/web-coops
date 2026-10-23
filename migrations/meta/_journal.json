@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1792697895854,
+      "tag": "0000_lowly_mole_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792697905529,
+      "tag": "0001_triggers",
+      "breakpoints": true
+    }
+  ]
+}

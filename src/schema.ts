@@ -1,43 +1,48 @@
 
 import { sql } from "drizzle-orm";
-import {
-  blob,
-  check,
-  int,
-  sqliteTable,
-  text,
-  unique,
-} from "drizzle-orm/sqlite-core";
-import { now_s } from "./index";
+import * as s from "drizzle-orm/sqlite-core";
 
 /*
  * File system. Quick query instead of directly to s3 bucket
  */
 
-export const files = sqliteTable(
+export const files = s.sqliteTable(
 	"files",
 	{
 		// ids
-		id: blob("id", { mode: "buffer" })
+		id: s.blob("id", { mode: "buffer" })
 			.primaryKey()
 			.notNull(),
+		userId: s.blob("user_id", { mode: "buffer" })
+			.notNull()
+			.references(() => users.id, { onDelete: "restrict" }),
 
 		// details
-		hash: text("hash"),
-		size: int("size"),
+		size: s.int("size").notNull(),
+		hash: s.text("hash").notNull(),
+		scope: s.text("scope"),
 
 		// timestamps
-		createdAt: int("created_at")
+		createdAt: s.int("created_at", { mode: "timestamp" })
 			.notNull()
-			.default(now_s()),
-		accessedAt: int("accessed_at"),
-		updatedAt: int("updated_at"),
-		deletedAt: int("deleted_at"),
+			.default(sql`(unixepoch())`),
+		accessedAt: s.int("accessed_at", { mode: "timestamp" }),
+		updatedAt: s.int("updated_at", { mode: "timestamp" }),
+		deletedAt: s.int("deleted_at", { mode: "timestamp" }),
 	},
-	(table) => [
-		check("files_id_length", sql`length(${table.id}) = 16`),
+	(t) => [
+		// indexes
+		s.index("files_user_id_idx").on(t.userId),
+		s.unique("files_hash_idx").on(t.hash),
+		// length check
+		s.check("files_id_length", sql`length(${t.id}) = 16`),
+		s.check("files_user_id_length", sql`length(${t.userId}) = 16`),
+		// insert check
+		s.check("files_size_check", sql`${t.size} >= 0`),
+		// TODO: validate hash length
 	],
 );
+export type File = typeof files.$inferSelect;
 
 /*
  * User system
@@ -46,276 +51,422 @@ export const files = sqliteTable(
 export enum Role {
 	Subscriber = 0,
 	User = 1,
+	Both = 2,
 	Admin = 6340,
 }
+const roleIds = Object.values(Role).filter(
+  (value): value is number => typeof value === "number",
+);
 
-export const users = sqliteTable(
+export const users = s.sqliteTable(
 	"users",
 	{
 		// ids
-		id: blob("id", { mode: "buffer" })
+		id: s.blob("id", { mode: "buffer" })
 			.primaryKey()
 			.notNull(),
 
 		// details
-		name: text("name")
+		name: s.text("name")
 			.notNull(),
-		email: text("email")
+		email: s.text("email")
 			.notNull(),
-		password: text("password"),
-		role: int("role"),
+		password: s.text("password"),
+		role: s.int("role").$type<Role>().notNull(),
 
 		// timestamps
-		createdAt: int("created_at")
+		createdAt: s.int("created_at", { mode: "timestamp" })
 			.notNull()
-			.default(now_s()),
-		accessedAt: int("accessed_at"),
-		updatedAt: int("updated_at"),
-		deletedAt: int("deleted_at"),
+			.default(sql`(unixepoch())`),
+		accessedAt: s.int("accessed_at", { mode: "timestamp" }),
+		updatedAt: s.int("updated_at", { mode: "timestamp" }),
+		deletedAt: s.int("deleted_at", { mode: "timestamp" }),
 	},
-	(table) => [
-		check("users_id_length", sql`length(${table.id}) = 16`),
-		unique("users_email_unique").on(table.email),
+	(t) => [
+		// indexes
+		s.uniqueIndex("users_email_unique")
+			.on(t.email)
+			.where(sql`${t.deletedAt} IS NULL`),
+		// length check
+		s.check("users_id_length", sql`length(${t.id}) = 16`),
+		// insert check
+		s.check("users_role_check",
+			sql`${t.role} IN (${sql.raw(roleIds.join(", "))})`),
+		s.check("users_email_lowercase", sql`${t.email} = lower(${t.email})`),
 	]
 );
+export type User = typeof users.$inferSelect;
 
-export const sessions = sqliteTable(
+export const sessions = s.sqliteTable(
 	"sessions",
 	{
 		// ids
-		id: blob("id", { mode: "buffer" })
+		id: s.blob("id", { mode: "buffer" })
 			.primaryKey()
 			.notNull(),
-		userId: blob("user_id", { mode: "buffer" })
+		userId: s.blob("user_id", { mode: "buffer" })
 			.notNull()
-			.references(() => users.id),
-		ipAddress: text("ip_addr"),
+			.references(() => users.id, { onDelete: "cascade" }),
+		ipAddress: s.text("ip_addr"),
 
 		// timestamps
-		createdAt: int("created_at")
+		createdAt: s.int("created_at", { mode: "timestamp" })
 			.notNull()
-			.default(now_s()),
-		expiresAt: int("expires_at"),
+			.default(sql`(unixepoch())`),
+		expiresAt: s.int("expires_at", { mode: "timestamp" })
+			.notNull(),
 	},
-	(table) => [
-		check("sessions_id_length", sql`length(${table.id}) = 16`),
+	(t) => [
+		// indexes
+		s.index("sessions_user_id_idx").on(t.userId),
+		s.index("sessions_expires_at_idx").on(t.expiresAt),
+		// length check
+		s.check("sessions_id_length", sql`length(${t.id}) = 16`),
+		s.check("sessions_user_id_length", sql`length(${t.userId}) = 16`),
 	],
 );
+export type Session = typeof sessions.$inferSelect;
 
 /*
  * Newsletter system
  */
 
-export const messages = sqliteTable(
+export const messages = s.sqliteTable(
 	"messages",
 	{
 		// ids
-		id: blob("id", { mode: "buffer" })
+		id: s.blob("id", { mode: "buffer" })
 			.primaryKey()
 			.notNull(),
-		fileId: blob("file_id", { mode: "buffer" })
-			.references(() => files.id),
+		fileId: s.blob("file_id", { mode: "buffer" })
+			.references(() => files.id, { onDelete: "set null" }),
 
 		// details
-		views: int("views").notNull().default(0),
-		sent: int("sent").notNull().default(0),
-		subject: text("subject").notNull(),
-		textbody: text("textbody").notNull(),
+		viewCount: s.int("view_count").notNull().default(0),
+		sentCount: s.int("sent_count").notNull().default(0),
+		subject: s.text("subject").notNull(),
+		textbody: s.text("s.textbody").notNull(),
 
 		// timestamps
-		createdAt: int("created_at")
+		createdAt: s.int("created_at", { mode: "timestamp" })
 			.notNull()
-			.default(now_s()),
-		updatedAt: int("updated_at"),
-		deletedAt: int("deleted_at"),
+			.default(sql`(unixepoch())`),
+		updatedAt: s.int("updated_at", { mode: "timestamp" }),
+		deletedAt: s.int("deleted_at", { mode: "timestamp" }),
 	},
-	(table) => [
-		check("messages_id_length", sql`length(${table.id}) = 16`),
+	(t) => [
+		// indexes
+		s.index("messages_file_id_idx").on(t.fileId),
+		// length check
+		s.check("messages_id_length", sql`length(${t.id}) = 16`),
+		s.check("messages_file_id_length", sql`length(${t.fileId}) = 16`),
+		// insert check
+		s.check("messages_sent_count_check", sql`${t.sentCount} >= 0`),
+		s.check("messages_view_count_check", sql`${t.viewCount} >= 0`),
 	],
 );
+export type Message = typeof messages.$inferSelect;
 
-export const links = sqliteTable(
+export const links = s.sqliteTable(
   "links",
 	{
 		// ids
-    id: blob("id", { mode: "buffer" })
+    id: s.blob("id", { mode: "buffer" })
       .primaryKey()
       .notNull(),
-    userId: blob("user_id", { mode: "buffer" })
+    userId: s.blob("user_id", { mode: "buffer" })
       .notNull()
-      .references(() => users.id),
-    messageId: blob("message_id", { mode: "buffer" })
+      .references(() => users.id, { onDelete: "cascade" }),
+    messageId: s.blob("message_id", { mode: "buffer" })
       .notNull()
-      .references(() => messages.id),
+      .references(() => messages.id, { onDelete: "cascade" }),
 
     // details
-    views: int("views").notNull().default(0),
-    createdAt: int("created_at").notNull(),
+    views: s.int("views").notNull().default(0),
+		createdAt: s.int("created_at", { mode: "timestamp" })
+			.notNull()
+			.default(sql`(unixepoch())`),
+    accessedAt: s.int("accessed_at", { mode: "timestamp" }),
   },
-  (table) => [
-    check("links_id_length", sql`length(${table.id}) = 16`),
-    unique("links_user_message_unique").on(table.userId, table.messageId),
+	(t) => [
+		// indexes
+		s.unique("links_user_message_idx").on(t.userId, t.messageId),
+    s.index("links_user_id_idx").on(t.userId),
+		s.index("links_message_id_idx").on(t.messageId),
+    // length check
+    s.check("links_id_length", sql`length(${t.id}) = 16`),
+    s.check("links_user_id_length", sql`length(${t.userId}) = 16`),
+    s.check("links_message_id_length", sql`length(${t.messageId}) = 16`),
   ],
 );
-
+export type Link = typeof links.$inferSelect;
 
 /*
  * Order system
  */
 
-export const addresses = sqliteTable(
+export const addresses = s.sqliteTable(
 	"addresses",
 	{
 		// ids
-		id: blob("id", { mode: "buffer" })
+		id: s.blob("id", { mode: "buffer" })
 			.primaryKey()
 			.notNull(),
-		userId: blob("user_id", { mode: "buffer" })
+		userId: s.blob("user_id", { mode: "buffer" })
 			.notNull()
-			.references(() => users.id),
+			.references(() => users.id, { onDelete: "cascade" }),
 
 		// details
-		streetNumber: int("street_number").notNull(),
-		code: text("code"),
-		street: text("street").notNull(),
-		city: text("city").notNull(),
-		state: text("state").notNull(),
+		streetNumber: s.text("street_number").notNull(),
+		street: s.text("street").notNull(),
+		city: s.text("city").notNull(),
+		state: s.text("state").notNull(),
 
 		// timestamps
-		createdAt: int("created_at")
+		createdAt: s.int("created_at", { mode: "timestamp" })
 			.notNull()
-			.default(now_s()),
-		accessedAt: int("accessed_at"),
-		updatedAt: int("updated_at"),
-		deletedAt: int("deleted_at"),
+			.default(sql`(unixepoch())`),
+		accessedAt: s.int("accessed_at", { mode: "timestamp" }),
+		updatedAt: s.int("updated_at", { mode: "timestamp" }),
+		deletedAt: s.int("deleted_at", { mode: "timestamp" }),
 	},
-	(table) => [
-		check("addresses_id_length", sql`length(${table.id}) = 16`),
+	(t) => [
+		// indexes
+		s.index("addresses_user_id_idx").on(t.userId),
+		// length check
+		s.check("addresses_id_length", sql`length(${t.id}) = 16`),
+		s.check("addresses_user_id_length", sql`length(${t.userId}) = 16`),
 	],
 );
+export type Address = typeof addresses.$inferSelect;
 
-export const menuOptions = sqliteTable(
-	"menu_options",
-	{
-		// ids
-		id: blob("id", { mode: "buffer" })
-			.primaryKey()
-			.notNull(),
-
-		// details
-		which: int("which").notNull(),
-		question: text("question").notNull(),
-		price: int("price"),
-		repeat_min: int("repeat_min").notNull(),
-		repeat_max: int("repeat_max").notNull(),
-	},
-	(table) => [
-		check("menu_options_id_length", sql`length(${table.id}) = 16`),
-	],
-);
-
-export const categories = sqliteTable(
+// menu
+export const categories = s.sqliteTable(
 	"categories",
 	{
 		// ids
-		id: blob("id", { mode: "buffer" })
+		id: s.blob("id", { mode: "buffer" })
 			.primaryKey()
 			.notNull(),
-		categoryId: blob("category_id", { mode: "buffer" })
-			.notNull()
-			.references(() => categories.id),
+		fileId: s.blob("file_id", { mode: "buffer" })
+			.references(() => files.id, { onDelete: "set null" }),
+		parentId: s.blob("parent_id", { mode: "buffer" })
+			.references((): s.AnySQLiteColumn => categories.id, { onDelete: "restrict" }),
 
-		name: text("name").notNull(),
-		position: int("position").notNull(),
+		name: s.text("name").notNull(),
+		position: s.int("position").notNull(),
 	},
-	(table) => [
-		check("categories_id_length", sql`length(${table.id}) = 16`),
+	(t) => [
+		// indexes
+		s.index("categories_parent_id_idx").on(t.parentId),
+		s.index("categories_file_id_idx").on(t.fileId),
+		// length check
+		s.check("categories_id_length", sql`length(${t.id}) = 16`),
+		s.check("categories_file_id_length", sql`length(${t.fileId}) = 16`),
+		s.check("categories_parent_id_length", sql`length(${t.parentId}) = 16`),
+		// insert check
+		s.check("categories_no_self_parent",
+			sql`${t.parentId} IS NULL OR ${t.parentId} <> ${t.id}`),
+		s.check("categories_position_check", sql`${t.position} >= 0`),
 	],
 );
+export type Category = typeof categories.$inferSelect;
 
-export const menuItems = sqliteTable(
+// menu item is placed on menu
+export const menuItems = s.sqliteTable(
 	"menu_items",
 	{
 		// ids
-		id: blob("id", { mode: "buffer" })
+		id: s.blob("id", { mode: "buffer" })
 			.primaryKey()
 			.notNull(),
-		categoryId: blob("category_id", { mode: "buffer" })
+		fileId: s.blob("file_id", { mode: "buffer" })
+			.references(() => files.id, { onDelete: "set null" }),
+		categoryId: s.blob("category_id", { mode: "buffer" })
 			.notNull()
 			.references(() => categories.id),
-		optionId: blob("option_id", { mode: "buffer" })
-			.references(() => menuOptions.id),
 
 		// details
-		name: text("name").notNull(),
-		description: text("description"),
-		price: int("price").notNull(),
+		name: s.text("name").notNull(),
+		description: s.text("description"),
+		price: s.int("price").notNull(),
 	},
-	(table) => [
-		check("menu_items_id_length", sql`length(${table.id}) = 16`),
+	(t) => [
+		// indexes
+		s.index("menu_items_category_id_idx").on(t.categoryId),
+		s.index("menu_items_file_id_idx").on(t.fileId),
+		// length checks
+		s.check("menu_items_id_length", sql`length(${t.id}) = 16`),
+		s.check("menu_items_file_id_length", sql`length(${t.fileId}) = 16`),
+		s.check("menu_items_category_id_length", sql`length(${t.categoryId}) = 16`),
+		// insert checks
+		s.check("menu_items_price_check", sql`${t.price} >= 0`),
 	],
 );
+export type MenuItem = typeof menuItems.$inferSelect;
 
-export const orderItems = sqliteTable(
-	"order_items",
+export const menuItemOptions = s.sqliteTable(
+  "menu_item_options",
+  {
+    menuItemId: s.blob("menu_item_id", { mode: "buffer" })
+      .notNull()
+      .references(() => menuItems.id, { onDelete: "cascade" }),
+    optionId: s.blob("option_id", { mode: "buffer" })
+      .notNull()
+      .references(() => menuOptions.id, { onDelete: "cascade" }),
+    position: s.int("position").notNull().default(0),
+  },
+	(t) => [
+		// indexes
+    s.primaryKey({ columns: [t.menuItemId, t.optionId] }),
+		s.index("menu_item_options_option_id_idx").on(t.optionId),
+		// length check
+    s.check("menu_item_options_menu_item_id_length", sql`length(${t.menuItemId}) = 16`),
+    s.check("menu_item_options_option_id_length", sql`length(${t.optionId}) = 16`),
+  ],
+);
+
+export enum OptionType {
+	Single = 0,
+	Repeating = 1,
+}
+const optionTypes = Object.values(OptionType).filter(
+  (value): value is number => typeof value === "number",
+);
+
+// menu options is placed onto a menu item
+export const menuOptions = s.sqliteTable(
+	"menu_options",
 	{
 		// ids
-		id: blob("id", { mode: "buffer" })
+		id: s.blob("id", { mode: "buffer" })
 			.primaryKey()
 			.notNull(),
-		orderId: blob("order_id", { mode: "buffer" })
-			.notNull()
-			.references(() => orders.id),
-		menuItemId: blob("menu_item_id", { mode: "buffer" })
-			.notNull()
-			.references(() => menuItems.id),
+		fileId: s.blob("file_id", { mode: "buffer" })
+			.references(() => files.id, { onDelete: "set null" }),
 
 		// details
-		quantity: int("quantity").notNull(),
-		unit_price: int("unit_price").notNull(),
-		instructions: text("instructions"),
+		type: s.int("type").$type<OptionType>().notNull(),
+		question: s.text("question").notNull(),
+		price: s.int("price"),
+		repeatMin: s.int("repeat_min").notNull(),
+		repeatMax: s.int("repeat_max").notNull(),
 	},
-	(table) => [
-		check("order_items_id_length", sql`length(${table.id}) = 16`),
+	(t) => [
+		// indexes
+		s.check("menu_options_type_idx",
+			sql`${t.type} IN (${sql.raw(optionTypes.join(", "))})`),
+		s.index("menu_options_file_id_idx").on(t.fileId),
+		// length checks
+		s.check("menu_options_id_length", sql`length(${t.id}) = 16`),
+		s.check("menu_options_file_id_length", sql`length(${t.fileId}) = 16`),
+		// insert checks
+		s.check("menu_options_price_check", sql`${t.price} >= 0`),
+		s.check("menu_options_repeat_min_check", sql`${t.repeatMin} >= 0`),
+		s.check("menu_options_repeat_range_check", sql`${t.repeatMax} >= ${t.repeatMin}`),
 	],
 );
+export type MenuOption = typeof menuOptions.$inferSelect;
 
-export const orders = sqliteTable(
+// The status just moves down this list
+// If ordertype is pickup, then skip from ready to complete
+export enum OrderStatus {
+	Placed,
+	Making,
+	Baking,
+	Ready,
+	InRoute,
+	Delivered,
+	Complete,
+}
+const orderStatuses = Object.values(OrderStatus).filter(
+  (value): value is number => typeof value === "number",
+);
+
+export enum OrderType {
+	Pickup,
+	Delivery,
+}
+const orderTypes = Object.values(OrderType).filter(
+  (value): value is number => typeof value === "number",
+);
+
+export const orders = s.sqliteTable(
 	"orders",
 	{
 		// ids
-		id: blob("id", { mode: "buffer" })
+		id: s.blob("id", { mode: "buffer" })
 			.primaryKey()
 			.notNull(),
-		userId: blob("user_id", { mode: "buffer" })
+		userId: s.blob("user_id", { mode: "buffer" })
 			.notNull()
-			.references(() => users.id),
+			.references(() => users.id, { onDelete: "restrict" }),
+		addressId: s.blob("address_id", { mode: "buffer" })
+			.references(() => addresses.id),
 
 		// details
-		subtotal: int("subtotal").notNull(),
-		tax: int("tax").notNull(),
-		total: int("total").notNull(),
+		status: s.int("status").$type<OrderStatus>().notNull(),
+		type: s.int("type").$type<OrderType>().notNull(),
+		subtotal: s.int("subtotal").notNull(),
+		tax: s.int("tax").notNull(),
+		total: s.int("total").notNull(),
 
 		// timestamps
-		createdAt: int("created_at")
+		createdAt: s.int("created_at", { mode: "timestamp" })
 			.notNull()
-			.default(now_s()),
-		accessedAt: int("accessed_at"),
-		updatedAt: int("updated_at"),
-		deletedAt: int("deleted_at"),
+			.default(sql`(unixepoch())`),
+		accessedAt: s.int("accessed_at", { mode: "timestamp" }),
+		updatedAt: s.int("updated_at", { mode: "timestamp" }),
+		deletedAt: s.int("deleted_at", { mode: "timestamp" }),
 	},
-	(table) => [
-		check("orders_id_length", sql`length(${table.id}) = 16`),
+	(t) => [
+		// indexes
+		s.index("orders_user_id_idx").on(t.userId),
+		// length checks
+		s.check("orders_id_length", sql`length(${t.id}) = 16`),
+		s.check("orders_user_id_length", sql`length(${t.userId}) = 16`),
+		s.check("orders_address_id_length", sql`length(${t.addressId}) = 16`),
+		// insert checks
+		s.check("orders_status_check",
+			sql`${t.status} IN (${sql.raw(orderStatuses.join(", "))})`),
+		s.check("orders_type_check",
+			sql`${t.type} IN (${sql.raw(optionTypes.join(", "))})`),
+		s.check("orders_amounts_check", sql`${t.subtotal} >= 0 AND ${t.tax} >= 0`),
+		s.check("orders_total_check", sql`${t.total} = ${t.subtotal} + ${t.tax}`),
 	],
 );
+export type Order = typeof orders.$inferSelect;
 
-/*
- * Pagination results for returning lists
- */
+export const orderItems = s.sqliteTable(
+	"order_items",
+	{
+		// ids
+		id: s.blob("id", { mode: "buffer" })
+			.primaryKey()
+			.notNull(),
+		orderId: s.blob("order_id", { mode: "buffer" })
+			.notNull()
+			.references(() => orders.id, { onDelete: "cascade" }),
+		menuItemId: s.blob("menu_item_id", { mode: "buffer" })
+			.notNull()
+			.references(() => menuItems.id, { onDelete: "restrict" }),
 
-export interface Pagination {
-  total: number;
-  limit: number;
-  offset: number;
-  items: Array<object>;
-}
+		// details
+		quantity: s.int("quantity").notNull(),
+		unitPrice: s.int("unit_price").notNull(),
+		instructions: s.text("instructions"),
+	},
+	(t) => [
+		// indexes
+		s.index("order_items_order_id_idx").on(t.orderId),
+		s.index("order_items_menu_item_id_idx").on(t.menuItemId),
+		// length checks
+		s.check("order_items_id_length", sql`length(${t.id}) = 16`),
+		s.check("order_items_order_id_length", sql`length(${t.orderId}) = 16`),
+		s.check("order_items_menu_item_id_length", sql`length(${t.menuItemId}) = 16`),
+		// insert checks
+		s.check("order_items_quantity_check", sql`${t.quantity} > 0`),
+		s.check("order_items_unit_price_check", sql`${t.unitPrice} >= 0`),
+	],
+);
+export type OrderItem = typeof orderItems.$inferSelect;

@@ -28,10 +28,13 @@
 		});
 
 		// Handle json response
-		const data_rx = res.json();
+		const data_rx = await res.json();
 		console.log(data_rx);
-		if (data_rx.location) {
-			window.location.href = data_rx.location;
+		if (data_rx["message"]) {
+			message_e = data_rx["message"];
+		}
+		if (data_rx["location"]) {
+			window.location.href = data_rx["location"];
 		}
 	}
 })();

@@ -12,9 +12,10 @@
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^0.0.0",
     "@types/node": "^26.6.4",
+    "drizzle-kit": "^0.31.11",
     "typescript": "^5.5.2",
     "vitest": "~4.1.0",
-    "wrangler": "^4.151.1"
+    "wrangler": "^4.151.3"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",

@@ -114,7 +114,12 @@ export function form(options: FormOptions, ...children: Node[]): Element {
 
 	// Add submit and script for submitting
 	result.childrenAppend(
-		tag("input", { "type": "submit", "id": submit_id.toString(), "value": options.submit_text || "Submit" }),
+		tag("input", {
+			"type": "submit",
+			"id": submit_id.toString(),
+			"class": "button-primary",
+			"value": options.submit_text || "Submit",
+		}),
 		tag("script", {
 			"src": "/js/form.js",
 			"data-href": options.href,
@@ -122,7 +127,7 @@ export function form(options: FormOptions, ...children: Node[]): Element {
 			"data-submit_id": submit_id.toString(),
 			"data-message_id": message_id.toString(),
 			"data-input_ids": JSON.stringify(ids).replaceAll("\"", "\'"),
-		})
+		}),
 	);
 	return result;
 }
