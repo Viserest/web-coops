@@ -15,6 +15,13 @@
       "when": 1792697905529,
       "tag": "0001_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792809558349,
+      "tag": "0002_wonderful_hellfire_club",
+      "breakpoints": true
     }
   ]
 }

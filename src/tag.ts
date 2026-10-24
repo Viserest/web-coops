@@ -7,14 +7,14 @@ export class Element {
 	public name: string;
 	public attributes: Record<string, string>;
 	public children: Node[];
-	constructor(name: string) {
+	public constructor(name: string) {
 		this.name = name;
 		this.attributes = {};
 		this.children = [];
 		return this;
 	}
-	// Modify attributes
-	attributeAppend(entries: Record<string, string>): Element {
+	/** Append to attributes */
+	public attributeAppend(entries: Record<string, string>): Element {
 		for (const [key, value] of Object.entries(entries)) {
 			if (this.attributes[key]) {
 				this.attributes[key] = this.attributes[key] + " " + value;
@@ -25,13 +25,13 @@ export class Element {
 		}
 		return this;
 	}
-	// Modify children
-	childrenAppend(...children: Node[]): Element {
+	/** Append to children */
+	public childrenAppend(...children: Node[]): Element {
 		this.children.push(...children);
 		return this;
 	}
-	// Query for a certain tag
-	queryAll(name: string): Element[] {
+	/** Query for a certain tag */
+	public queryAll(name: string): Element[] {
 		const found: Element[] = [];
 		for (const child of this.children) {
 			// Only search elements
@@ -45,8 +45,8 @@ export class Element {
 		}
 		return found;
 	}
-	// Get as string
-	toString(): string {
+	/** Get as string */
+	public toString(): string {
     const attributes = Object.entries(this.attributes)
       .map(([key, value]) => ` ${key}="${value}"`)
       .join("");
@@ -55,6 +55,19 @@ export class Element {
   }
 }
 
+/**
+ * Short hand for Element creation:
+ * ```typescript
+ * new Element(tag: string)
+ *   .attributeAppend({ ...attributes })
+ *   .childrenAppend(...children);
+ * ```
+ *
+ * @param name Element tag name
+ * @param attributes Key/Value pairs for attributes
+ * @param children List of children
+ * @returns
+ */
 export function tag(name: string, attributes: Record<string, string>, ...children: Node[]): Element {
 	let result = new Element(name);
 	if (attributes) result.attributeAppend(attributes);
@@ -69,7 +82,7 @@ export function tag(name: string, attributes: Record<string, string>, ...childre
  * - submit_text: The initial submit button text (Default: "Submit")
  * - message_text: The initial message paragraph text (Default: Empty string)
  */
-export type FormOptions = {
+export interface FormOptions {
 	href: string,
 	method: string,
 	submit_text?: string,
@@ -86,8 +99,8 @@ export type FormOptions = {
  * FormOptions:
  * - href: HTTP URL
  * - method: HTTP Method
- * - submit_text: The initial submit button text
- * - message_text: The initial message paragraph text (This element is updated on submit)
+ * - submit_text?: The initial submit button text
+ * - message_text?: The initial message paragraph text (This element is updated on submit)
  *
  * @param options FormOptions
  * @param children Child Nodes
@@ -133,14 +146,19 @@ export function form(options: FormOptions, ...children: Node[]): Element {
 }
 
 /**
- * Builds a HTML table using an Array of items. The callback function is called on each item
+ * Builds a HTML table using an Array of items. The callback
+ * is called on each item to produce the row as an Element.
  *
+ * @param thead Array of element for the column names
  * @param table Array of items the table is built on
  * @param callback Each item's row in the table
  * @returns Table HTML Element
  */
-export function table<T>(table: T[], callback: (value: T) => Element): Element {
+export function table<T>(thead: Element[], table: T[], callback: (value: T) => Element): Element {
 	return tag("table", {},
-		...table.map((a) => callback(a)),
+		tag("thead", {}, ...thead),
+		tag("thead", {},
+			...table.map((a) => callback(a)),
+		),
 	);
 }

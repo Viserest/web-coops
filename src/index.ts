@@ -6,9 +6,9 @@ import "./apis";
 
 export const X_OPTIONS = {
 	// urls
-	BASE_URL: "https://coopspizzeria.com",
-	BASE_WWW_URL: "https://www.coopspizzeria.com",
-	S3_BUCKET_URL: "https://s3.coopspizzeria.com",
+	BASE_URL: "https://coopspizzeria.com/",
+	BASE_WWW_URL: "https://www.coopspizzeria.com/",
+	S3_BUCKET_URL: "https://s3.coopspizzeria.com/",
 	GRUBHUB_URL: "https://www.grubhub.com/restaurant/coops-pizzeria-1219-w-crawford-st-salina/10391280" +
 		"?utm_source=coopspizzeria&amp;utm_medium=content_owned&amp;utm_campaign=menushare&amp;utm_content=share-link",
 	// config
@@ -26,6 +26,9 @@ export const X_OPTIONS = {
 		"Homemade Dough, Sauces, and Dressings. " +
 		"Dine-in or Carry-out.",
 	// src: "/images/[0]", alt: [1]
+	PHOTO_LOGO: "logo.png",
+	PHOTO_FAVICON: "favicon.png",
+	PHOTO_FAVICON_APPLE: "favicon-apple.png",
 	PHOTOS_FOOD: [
 		["mexican_pizza.png", "Mexican Pizza"],
 	  ["wings_tray.png", "Wings on tray"],

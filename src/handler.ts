@@ -1,61 +1,113 @@
 
-import { IRequest, json, RouterType } from "itty-router";
-import { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
+import { IRequest, RouterType } from "itty-router";
+import * as s from "drizzle-orm/sqlite-core";
 import * as d from "drizzle-orm";
 
-import * as schema from "./schema";
-import { Bindings, Db } from "./context";
-import { createDb, nowSecs } from "./utils";
+import { createDb, nowSecs, parseToObject, reply, toInt } from "./utils";
 import { Uuid } from "./uuid";
+import * as schema from "./schema";
+import { Bindings, Args } from "./context";
+import { defineForm, Fields, FormMethod, FormResult } from "./form";
+import { tag } from "./tag";
 
-// ---------------------------------------------------------------------------
+//
 // Types
-// ---------------------------------------------------------------------------
-
-/**
- * Everything a permission function receives.
- * `db` is always set (reused from setDb/setUser, or created here).
- * `user` is set only if setUser ran earlier in the chain.
- */
-export interface HandlerContext {
-	req: IRequest;
-	env: Bindings;
-	ctx: ExecutionContext;
-	db: Db;
-	user?: schema.User;
-}
+//
 
 /** A Drizzle sqliteTable that has an `id` column. */
-export type TableWithId = SQLiteTable & { id: SQLiteColumn };
+export type TableWithId = s.SQLiteTable & { id: s.SQLiteColumn };
 
 /** Column keys of a table, e.g. "id" | "name" | "email". */
-export type Field<T extends SQLiteTable> = keyof T["$inferSelect"] & string;
+export type Field<T extends s.SQLiteTable> = keyof T["$inferSelect"] & string;
 
 /** Payload for create: the whole insert model, or only the chosen fields. */
-export type CreatePayload<T extends SQLiteTable, K extends Field<T> = Field<T>> =
+export type CreatePayload<T extends s.SQLiteTable, K extends Field<T> = Field<T>> =
 	Pick<T["$inferInsert"], Extract<K, keyof T["$inferInsert"]>>;
 
 /** Payload for update: same as create, but every field is optional. */
-export type UpdatePayload<T extends SQLiteTable, K extends Field<T> = Field<T>> =
+export type UpdatePayload<T extends s.SQLiteTable, K extends Field<T> = Field<T>> =
 	Partial<CreatePayload<T, K>>;
 
 /** Shape returned by read/list: the whole row, or only the chosen fields. */
-export type ReadPayload<T extends SQLiteTable, K extends Field<T> = Field<T>> =
+export type ReadPayload<T extends s.SQLiteTable, K extends Field<T> = Field<T>> =
 	Pick<T["$inferSelect"], K>;
 
-interface BaseOption {
-	/** Called at the start of the route. true = continue, false = 403 Unauthorized. */
-	permission?: (c: HandlerContext) => boolean | Promise<boolean>;
-	/** Success message. A default is used when omitted. */
+export type OpType = "list" | "create" | "read" | "update" | "delete";
+
+//
+// Handlers
+//
+
+/** A before step: may return a Response (stop), fields to add to req, or nothing. */
+export type BeforeHandler<In = IRequest, Add extends object = {}> = (
+	req: In,
+	env: Args[0],
+	ctx: Args[1],
+) => Response | Add | void | Promise<Response | Add | void>;
+
+export type MainHandler<Req = IRequest> = (
+	req: Req,
+	env: Args[0],
+	ctx: Args[1],
+) => Response | Promise<Response>;
+
+export type AfterHandler<Req = IRequest> = (
+	res: Response,
+	req: Req,
+	env: Args[0],
+	ctx: Args[1],
+) => Response | void | Promise<Response | void>;
+
+// ---- type-level accumulation ------------------------------------------------
+
+/** Fields a step adds. Response/void-only steps add nothing ({}). */
+type Added<H> = H extends (...a: any[]) => infer R
+	? [Exclude<Awaited<R>, Response | void | undefined | null>] extends [never]
+		? {}
+		: Exclude<Awaited<R>, Response | void | undefined | null>
+	: {};
+
+/** Request type after running every step in the tuple. */
+type Accum<Base, Hs extends readonly unknown[]> =
+	Hs extends readonly [infer H, ...infer Rest] ? Accum<Base & Added<H>, Rest> : Base;
+
+/** Each step must accept the request as built by the steps before it. */
+type Checked<Base, Hs extends readonly unknown[]> =
+	Hs extends readonly [infer H, ...infer Rest]
+		? readonly [BeforeHandler<Base, object>, ...Checked<Base & Added<H>, Rest>]
+		: readonly [];
+
+/** `any` stays `any`, so loosely typed options still work. */
+type ReqOf<B extends readonly unknown[]> = 0 extends 1 & B ? any : Accum<IRequest, B>;
+
+// ---- options ------------------------------------------------------------------
+
+export interface HandlerOption<B extends readonly BeforeHandler<any, any>[] = any> {
+	/** Handlers that run before the main handler. Their returned fields are merged into req. */
+	before?: B & Checked<IRequest, B>;
+	/** Handlers that run after the main handler. Receive the fully extended req. */
+	after?: readonly AfterHandler<ReqOf<B>>[];
+	/** Custom main handler. When omitted, the default handler for this operation runs. */
+	handler?: MainHandler<ReqOf<B>>;
+	/** Success message used by the default handler. Ignored when `handler` is provided. */
 	message?: string;
 }
 
+/** Infers the request type per operation. Wrap an operation's options in this. */
+export const op = <const B extends readonly BeforeHandler<any, any>[]>(
+	o: HandlerOption<B> & { fields?: readonly any[]; soft?: boolean },
+) => o;
+
+//
+// options
+//
+
 /** `fields` limits which columns are used. Omit it to use the entire table. */
-interface FieldOption<T extends SQLiteTable> extends BaseOption {
+interface FieldOption<T extends s.SQLiteTable> extends HandlerOption {
 	fields?: readonly Field<T>[];
 }
 
-export interface DeleteOption extends BaseOption {
+export interface DeleteOption extends HandlerOption {
 	/**
 	 * true  -> UPDATE <table> SET deleted_at = <now> WHERE id = ?
 	 * false -> DELETE FROM <table> WHERE id = ?   (default)
@@ -64,102 +116,130 @@ export interface DeleteOption extends BaseOption {
 	soft?: boolean;
 }
 
+/** Every key is required. Set one to `null` to skip that route. */
 export interface RouteOptions<T extends TableWithId> {
 	table: T;
-	list?: FieldOption<T>;
-	create?: FieldOption<T>;
-	read?: FieldOption<T>;
-	update?: FieldOption<T>;
-	delete?: DeleteOption;
+	list: FieldOption<T> | null;
+	create: FieldOption<T> | null;
+	read: FieldOption<T> | null;
+	update: FieldOption<T> | null;
+	delete: DeleteOption | null;
 }
 
-// ---------------------------------------------------------------------------
-// Handler
-// ---------------------------------------------------------------------------
+/** What each form's parseBody() produces. */
+interface Payloads<T extends TableWithId> {
+	list: { limit?: string; offset?: string };
+	create: CreatePayload<T>;
+	read: { id: string };
+	update: { id: string } & UpdatePayload<T>;
+	delete: { id: string };
+}
+
+/** Each handler key maps to its FormResult, or null when it was skipped. */
+export type HandlerResult<T extends TableWithId, O extends RouteOptions<T>> = {
+	[K in OpType]: O[K] extends null ? null : FormResult<Fields, Payloads<T>[K]>;
+} & {
+	/** All configured forms, wrapped in a single <div>. */
+	renderAll(): Element;
+};
+
+//
+// The Handler
+//
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
-const reply = (message: string, status: number, extra: Record<string, unknown> = {}) =>
-	json({ message, ...extra }, { status });
+/** before[] -> main (custom or default) -> after[]. */
+const chain =
+	(opt: HandlerOption, fallback: MainHandler<any>): MainHandler =>
+	async (req, env, ctx) => {
+		for (const before of (opt.before ?? []) as readonly BeforeHandler<any, any>[]) {
+			const out = await before(req, env, ctx);
+			if (out instanceof Response) return out;   // short-circuit
+			if (out) Object.assign(req, out);          // mutate req with what the step added
+		}
+		let res = await (opt.handler ?? fallback)(req, env, ctx);
+		for (const after of (opt.after ?? []) as readonly AfterHandler<any>[]) {
+			res = (await after(res, req, env, ctx)) ?? res;
+		}
+		return res;
+	};
 
-const toInt = (v: unknown, fallback: number): number => {
-	const raw = Array.isArray(v) ? v[0] : v;
-	if (raw === undefined || raw === "") return fallback;
-	const n = Number(raw);
-	return Number.isInteger(n) && n >= 0 ? n : fallback;
-};
-
-export function handler<R extends RouterType, T extends TableWithId>(
+export function handler<R extends RouterType, T extends TableWithId, O extends RouteOptions<T>>(
 	router: R,
 	path: string,
-	options: RouteOptions<T>,
-): R {
+	options: O & RouteOptions<T>,
+): HandlerResult<T, O> {
+	// Get table
 	const { table } = options;
-	const columns = d.getTableColumns(table) as Record<string, SQLiteColumn>;
-	const idCol = columns["id"]!;
-	const deletedKey = Object.keys(columns).find((k) => columns[k]!.name === "deleted_at");
-	const deletedCol = deletedKey ? columns[deletedKey] : undefined;
+	const columns = d.getTableColumns(table) as Record<string, s.SQLiteColumn>;
 
-	if (options.delete?.soft && !deletedCol) {
+	// Get id column
+	const idColumn = columns["id"]!;
+
+	// Get deleted at column
+	const deletedKey = Object.keys(columns).find((k) => columns[k]!.name === "deleted_at");
+	const deletedColumn = deletedKey ? columns[deletedKey] : undefined;
+
+	// Soft-deleted rows are hidden from list/read/update
+	const notDeleted = deletedColumn ? d.isNull(deletedColumn) : undefined;
+
+	// Table must have deleted at column for a soft delete
+	if (options.delete?.soft && !deletedColumn) {
 		throw new Error("handler: soft delete needs a `deleted_at` column on the table");
 	}
 
-	// Soft-deleted rows are hidden from list/read/update.
-	const notDeleted = deletedCol ? d.isNull(deletedCol) : undefined;
-
-	/** Columns to select: chosen fields, or the entire table. */
-	const selection = (fields?: readonly string[]) => {
+	/**
+	 * Columns to select: chosen fields or the entire table (default).
+	 * If fields is provided then filter columns to only those fields.
+	 */
+	const columnSelect = (fields?: readonly string[]) => {
 		const keys = (fields ?? Object.keys(columns)).filter((k) => k in columns);
-		return Object.fromEntries(keys.map((k) => [k, columns[k]!])) as Record<string, SQLiteColumn>;
+		return Object.fromEntries(keys.map((k) => [k, columns[k]!])) as Record<string, s.SQLiteColumn>;
 	};
 
-	/** Keys a client may write: chosen fields, or the entire table, minus id/deleted_at. */
-	const writableKeys = (fields?: readonly string[]) =>
+	/**
+	 * Keys a client may write: chosen fields or the entire table.
+	 * Skips id and deleted_at columns
+	 */
+	const columnWritableKeys = (fields?: readonly string[]) =>
 		(fields ?? Object.keys(columns)).filter((k) => k in columns && k !== "id" && k !== deletedKey);
 
-	/** Copy only the allowed keys out of an untrusted JSON body. */
-	const pick = (body: unknown, keys: string[]): Record<string, unknown> | null => {
-		if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
-		const src = body as Record<string, unknown>;
-		const out: Record<string, unknown> = {};
-		for (const k of keys) if (k in src) out[k] = src[k];
-		return out;
-	};
+	/** Build form fields for a set of columns. */
+	const bodyFields = (keys: string[], allOptional: boolean): Fields =>
+		Object.fromEntries(
+			keys.map((k) => {
+				const col = columns[k]!;
+				const type = /pass/i.test(k) ? "password" : /mail/i.test(k) ? "email" : "text";
+				// Required only if the DB requires it: NOT NULL and no default.
+				const optional = allOptional || !col.notNull || col.hasDefault;
+				return [k, { type, placeholder: k, ...(optional && { optional: true as const }) }];
+			}),
+		);
 
-	/** Wraps a route: builds context, runs permission, catches unexpected errors. */
-	const route =
-		<O extends BaseOption>(opt: O, fn: (c: HandlerContext) => Promise<Response>) =>
-		async (req: IRequest, env: Bindings, ctx: ExecutionContext): Promise<Response> => {
-			const c: HandlerContext = {
-				req,
-				env,
-				ctx,
-				db: req.db ?? createDb(env),
-				user: req.user,
-			};
-			try {
-				if (opt.permission && !(await opt.permission(c))) {
-					return reply("Unauthorized", 403);
-				}
-				return await fn(c);
-			} catch (e) {
-				console.error(e);
-				return reply("Internal server error", 500);
-			}
-		};
+	const idField: Fields = { id: { type: "text", placeholder: "id" } };
+
+	const forms: Record<OpType, FormResult<Fields, any> | null> = {
+		list: null,
+		create: null,
+		read: null,
+		update: null,
+		delete: null,
+	};
 
 	// LIST
 	if (options.list) {
 		const opt = options.list;
 		router.get(
 			path,
-			route(opt, async ({ req, db }) => {
+			chain(opt, async (req, env) => {
+				const db = req.db ?? createDb(env);
 				const limit = Math.min(toInt(req.query?.limit, DEFAULT_LIMIT), MAX_LIMIT);
 				const offset = toInt(req.query?.offset, 0);
 
 				const items = await db
-					.select(selection(opt.fields))
+					.select(columnSelect(opt.fields))
 					.from(table)
 					.where(notDeleted)
 					.limit(limit)
@@ -177,6 +257,14 @@ export function handler<R extends RouterType, T extends TableWithId>(
 				});
 			}),
 		);
+		forms.list = defineForm({
+			method: "GET",
+			href: path,
+			fields: {
+				limit: { type: "text", placeholder: "limit" },
+				offset: { type: "text", placeholder: "offset" },
+			},
+		});
 	}
 
 	// CREATE
@@ -184,9 +272,10 @@ export function handler<R extends RouterType, T extends TableWithId>(
 		const opt = options.create;
 		router.post(
 			path,
-			route(opt, async ({ req, db }) => {
+			chain(opt, async (req, env) => {
+				const db = req.db ?? createDb(env);
 				const body = await req.json().catch(() => undefined);
-				const data = pick(body, writableKeys(opt.fields));
+				const data = parseToObject(body, columnWritableKeys(opt.fields));
 				if (!data) return reply("Body must be a JSON object", 400);
 
 				const id = Uuid.randomv4();
@@ -200,6 +289,11 @@ export function handler<R extends RouterType, T extends TableWithId>(
 				});
 			}),
 		);
+		forms.create = defineForm({
+			method: "POST",
+			href: path,
+			fields: bodyFields(columnWritableKeys(opt.fields), false),
+		});
 	}
 
 	// READ
@@ -207,14 +301,15 @@ export function handler<R extends RouterType, T extends TableWithId>(
 		const opt = options.read;
 		router.get(
 			path + "/:id",
-			route(opt, async ({ req, db }) => {
+			chain(opt, async (req, env) => {
+				const db = req.db ?? createDb(env);
 				const id = req.params["id"];
 				if (!id) return reply("Missing required field, id", 400);
 
 				const [item] = await db
-					.select(selection(opt.fields))
+					.select(columnSelect(opt.fields))
 					.from(table)
-					.where(d.and(d.eq(idCol, id), notDeleted))
+					.where(d.and(d.eq(idColumn, id), notDeleted))
 					.limit(1);
 				if (!item) return reply("Not found", 404);
 
@@ -223,6 +318,11 @@ export function handler<R extends RouterType, T extends TableWithId>(
 				});
 			}),
 		);
+		forms.read = defineForm({
+			method: "GET",
+			href: path + "/:id",
+			fields: idField,
+		});
 	}
 
 	// UPDATE
@@ -230,25 +330,35 @@ export function handler<R extends RouterType, T extends TableWithId>(
 		const opt = options.update;
 		router.put(
 			path + "/:id",
-			route(opt, async ({ req, db }) => {
+			chain(opt, async (req, env) => {
+				const db = req.db ?? createDb(env);
 				const id = req.params["id"];
 				if (!id) return reply("Missing required field, id", 400);
 
 				const body = await req.json().catch(() => undefined);
-				const data = pick(body, writableKeys(opt.fields));
+				const data = parseToObject(body, [], columnWritableKeys(opt.fields));
 				if (!data) return reply("Body must be a JSON object", 400);
 				if (Object.keys(data).length === 0) return reply("No updatable fields provided", 400);
 
 				const updated = await db
 					.update(table)
 					.set(data as unknown as Partial<T["$inferInsert"]>)
-					.where(d.and(d.eq(idCol, id), notDeleted))
-					.returning({ id: idCol });
+					.where(d.and(d.eq(idColumn, id), notDeleted))
+					.returning({ id: idColumn });
 				if (updated.length === 0) return reply("Not found", 404);
 
 				return reply(opt.message ?? "Updated", 200);
 			}),
 		);
+		forms.update = defineForm({
+			method: "PUT",
+			href: path + "/:id",
+		  fields: {
+				...idField,
+				// every field optional
+				...bodyFields(columnWritableKeys(opt.fields), true),
+			},
+		});
 	}
 
 	// DELETE
@@ -256,7 +366,8 @@ export function handler<R extends RouterType, T extends TableWithId>(
 		const opt = options.delete;
 		router.delete(
 			path + "/:id",
-			route(opt, async ({ req, db }) => {
+			chain(opt, async (req, env) => {
+				const db = req.db ?? createDb(env);
 				const id = req.params["id"];
 				if (!id) return reply("Missing required field, id", 400);
 
@@ -264,15 +375,29 @@ export function handler<R extends RouterType, T extends TableWithId>(
 					? await db
 							.update(table)
 							.set({ [deletedKey!]: nowSecs() } as unknown as Partial<T["$inferInsert"]>)
-							.where(d.and(d.eq(idCol, id), notDeleted))
-							.returning({ id: idCol })
-					: await db.delete(table).where(d.eq(idCol, id)).returning({ id: idCol });
+							.where(d.and(d.eq(idColumn, id), notDeleted))
+							.returning({ id: idColumn })
+					: await db.delete(table).where(d.eq(idColumn, id)).returning({ id: idColumn });
 				if (deleted.length === 0) return reply("Not found", 404);
 
 				return reply(opt.message ?? "Deleted", 200);
 			}),
 		);
+		forms.delete = defineForm({
+			method: "DELETE",
+			href: path + "/:id",
+			fields: idField,
+		});
 	}
 
-	return router;
+	const renderAll = () =>
+		tag(
+			"div",
+			{},
+			...Object.entries(forms)
+				.filter(([, f]) => f !== null)
+				.map(([type, f]) => f!.render({ submit_text: type })),
+		);
+
+	return { ...forms, renderAll } as unknown as HandlerResult<T, O>;
 }

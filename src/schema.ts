@@ -145,7 +145,7 @@ export const messages = s.sqliteTable(
 		viewCount: s.int("view_count").notNull().default(0),
 		sentCount: s.int("sent_count").notNull().default(0),
 		subject: s.text("subject").notNull(),
-		textbody: s.text("s.textbody").notNull(),
+		textbody: s.text("textbody").notNull(),
 
 		// timestamps
 		createdAt: s.int("created_at", { mode: "timestamp" })
@@ -254,6 +254,7 @@ export const categories = s.sqliteTable(
 			.references((): s.AnySQLiteColumn => categories.id, { onDelete: "restrict" }),
 
 		name: s.text("name").notNull(),
+		description: s.text("description"),
 		position: s.int("position").notNull(),
 	},
 	(t) => [
@@ -314,7 +315,8 @@ export const menuItemOptions = s.sqliteTable(
     optionId: s.blob("option_id", { mode: "buffer" })
       .notNull()
       .references(() => menuOptions.id, { onDelete: "cascade" }),
-    position: s.int("position").notNull().default(0),
+
+		position: s.int("position").notNull().default(0),
   },
 	(t) => [
 		// indexes

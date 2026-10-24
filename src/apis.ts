@@ -15,152 +15,156 @@ import { X_OPTIONS } from "./index";
  */
 
 // Files
-handler(router, "/api/v1/files", {
+export const filesHandler = handler(router, "/api/v1/files", {
 	table: schema.files,
 	list: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found files",
 	},
-	read: {
-		permission: adminOnly,
-		message: "Found file",
-	},
-});
-// create (add to r2 and d1)
-router.post<RequestUser>("/api/v1/files", setUser, async (req, env, ctx) => {
-	if (!checkRole(req.user, schema.Role.Admin)) {
-		return reply("Unauthorized", 403);
-	}
+	create: {
+		before: [setUser, adminOnly],
+		handler: async(req, env, ctx) => {
+			if (!checkRole(req.user, schema.Role.Admin)) {
+				return reply("Unauthorized", 403);
+			}
 
-	// Content type
-	const contentTypeHeader = req.headers.get("content-type");
-	const contentType = contentTypeHeader?.split(";", 1)[0].trim().toLowerCase();
+			// Content type
+			const contentTypeHeader = req.headers.get("content-type");
+			const contentType = contentTypeHeader?.split(";", 1)[0].trim().toLowerCase();
 
-	if (!contentType || !/^image\/[a-z0-9.+-]+$/.test(contentType)) {
-		return reply("Content-Type must be an image MIME type", 415);
-	}
+			if (!contentType || !/^image\/[a-z0-9.+-]+$/.test(contentType)) {
+				return reply("Content-Type must be an image MIME type", 415);
+			}
 
-	// Content length
-	const lengthHeader = req.headers.get("content-length");
-	if (!lengthHeader || !/^\d+$/.test(lengthHeader)) {
-		return reply("A valid Content-Length header is required", 400);
-	}
+			// Content length
+			const lengthHeader = req.headers.get("content-length");
+			if (!lengthHeader || !/^\d+$/.test(lengthHeader)) {
+				return reply("A valid Content-Length header is required", 400);
+			}
 
-	const expectedSize = Number(lengthHeader);
-	const maxSize = 4 * 1024 * 1024;
+			const expectedSize = Number(lengthHeader);
+			const maxSize = 4 * 1024 * 1024;
 
-	if (!Number.isSafeInteger(expectedSize)) {
-		return reply("Invalid Content-Length", 400);
-	}
-	if (expectedSize === 0) {
-		return reply("File must not be empty", 400);
-	}
-	if (expectedSize >= maxSize) {
-		return reply("File must be less than 4 MB", 413);
-	}
-	if (!req.body) {
-		return reply("Request body is required", 400);
-	}
-
-	// Read with a limit so a body larger than the declared size can't consume
-	// unbounded memory.
-	const reader = req.body.getReader();
-	const chunks: Uint8Array[] = [];
-	let size = 0;
-
-	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			if (!value) continue;
-
-			size += value.byteLength;
-			if (size >= maxSize) {
-				await reader.cancel();
+			if (!Number.isSafeInteger(expectedSize)) {
+				return reply("Invalid Content-Length", 400);
+			}
+			if (expectedSize === 0) {
+				return reply("File must not be empty", 400);
+			}
+			if (expectedSize >= maxSize) {
 				return reply("File must be less than 4 MB", 413);
 			}
-			if (size > expectedSize) {
-				await reader.cancel();
+			if (!req.body) {
+				return reply("Request body is required", 400);
+			}
+
+			// Read with a limit so a body larger than the declared size can't consume
+			// unbounded memory.
+			const reader = req.body.getReader();
+			const chunks: Uint8Array[] = [];
+			let size = 0;
+
+			try {
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) break;
+					if (!value) continue;
+
+					size += value.byteLength;
+					if (size >= maxSize) {
+						await reader.cancel();
+						return reply("File must be less than 4 MB", 413);
+					}
+					if (size > expectedSize) {
+						await reader.cancel();
+						return reply("Content-Length does not match the request body", 400);
+					}
+
+					chunks.push(value);
+				}
+			} finally {
+				reader.releaseLock();
+			}
+
+			if (size === 0) {
+				return reply("File must not be empty", 400);
+			}
+			if (size !== expectedSize) {
 				return reply("Content-Length does not match the request body", 400);
 			}
 
-			chunks.push(value);
-		}
-	} finally {
-		reader.releaseLock();
-	}
+			const bytes = new Uint8Array(size);
+			let offset = 0;
+			for (const chunk of chunks) {
+				bytes.set(chunk, offset);
+				offset += chunk.byteLength;
+			}
 
-	if (size === 0) {
-		return reply("File must not be empty", 400);
-	}
-	if (size !== expectedSize) {
-		return reply("Content-Length does not match the request body", 400);
-	}
+			// hash
+			const digest = await crypto.subtle.digest("SHA-256", bytes);
+			const hash = Array.from(new Uint8Array(digest), byte =>
+				byte.toString(16).padStart(2, "0"),
+			).join("");
 
-	const bytes = new Uint8Array(size);
-	let offset = 0;
-	for (const chunk of chunks) {
-		bytes.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
+			// scope, can be null
+			const scope = Array.isArray(req.query["scope"])
+				? req.query["scope"].join(" ")
+				: req.query["scope"];
 
-	// hash
-	const digest = await crypto.subtle.digest("SHA-256", bytes);
-	const hash = Array.from(new Uint8Array(digest), byte =>
-		byte.toString(16).padStart(2, "0"),
-	).join("");
+			// add to r2 bucket
+			const id = Uuid.randomv4();
+			await env.IMAGES.put(id.toString(), bytes, {
+				httpMetadata: { contentType },
+			});
 
-	// scope, can be null
-	const scope = Array.isArray(req.query["scope"])
-		? req.query["scope"].join(" ")
-		: req.query["scope"];
+			// add to d1 table
+			const result = await req.db
+				.insert(schema.files)
+				.values({
+					id: id.toBytes(),
+					userId: Uuid.fromBytes(req.user.id).toBytes(),
+					size,
+					hash,
+					scope,
+				})
+				.run();
+			if (!result.success) return reply("Error uploading file", 500);
 
-	// add to r2 bucket
-	const id = Uuid.randomv4();
-	await env.IMAGES.put(id.toString(), bytes, {
-		httpMetadata: { contentType },
-	});
+			return reply("Uploaded file", 201);
+		},
+	},
+	read: {
+		before: [setUser, adminOnly],
+		message: "Found file",
+	},
+	update: null,
+	delete: {
+		before: [setUser, adminOnly],
+		handler: async(req, env, ctx) => {
+			if (!checkRole(req.user, schema.Role.Admin)) {
+				return reply("Unauthorized", 403);
+			}
 
-	// add to d1 table
-	const result = await req.db
-		.insert(schema.files)
-		.values({
-			id: id.toBytes(),
-			userId: Uuid.fromBytes(req.user.id).toBytes(),
-			size,
-			hash,
-			scope,
-		})
-		.run();
-	if (!result.success) return reply("Error uploading file", 500);
+			let id;
+			try {
+				id = Uuid.fromString(req.params["id"]);
+			} catch {
+				return reply("Invalid required param, id", 400);
+			}
 
-	return reply("Uploaded file", 201);
-});
-// NO update
-// delete (hard remove from r2 and d1)
-router.delete<RequestUser>("/api/v1/files/:id", setUser, async (req, env, ctx) => {
-	if (!checkRole(req.user, schema.Role.Admin)) {
-		return reply("Unauthorized", 403);
-	}
+			// delete from r2
+			await env.IMAGES.delete(id.toString());
 
-	let id;
-	try {
-		id = Uuid.fromString(req.params["id"]);
-	} catch {
-		return reply("Invalid required param, id", 400);
-	}
+			// delete from d1
+			const result = await req.db
+				.delete(schema.files)
+				.where(d.eq(schema.files.id, id.toBytes()))
+				.run();
+			if (!result.success) return reply("Error deleting file", 500);
 
-	// delete from r2
-	await env.IMAGES.delete(id.toString());
-
-	// delete from d1
-	const result = await req.db
-		.delete(schema.files)
-		.where(d.eq(schema.files.id, id.toBytes()))
-		.run();
-	if (!result.success) return reply("Error deleting file", 500);
-
-	return reply("Deleted file", 200);
+			return reply("Deleted file", 200);
+		},
+	},
 });
 
 /*
@@ -181,7 +185,7 @@ router.post<RequestDb>(subscribeForm.href, setDb, async (req, env, ctx) => {
 	const result2 = await subscribeForm.parseRequest(req);
 	if (!result2.ok) return reply(result2.error, 400);
 
-	const { name, email } = result2.data;
+	const { name, email } = result2.value;
 
 	if (!isAsciiOrSpace(name)) return reply("Invalid required field, name", 400);
 	if (!isEmail(email)) return reply("Invalid required field, email", 400);
@@ -238,20 +242,22 @@ router.post<RequestDb>(unsubscribeForm.href, setDb, async (req, env, ctx) => {
 handler(router, "/api/v1/users", {
 	table: schema.users,
 	list: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found users",
 	},
+	// register is an alias of create
+	create: null,
 	read: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found user",
 	},
 	update: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["name", "email", "role"],
 		message: "Updated user",
 	},
 	delete: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		soft: true,
 		message: "Deleted user",
 	},
@@ -270,7 +276,7 @@ router.post<RequestDb>(registerForm.href, setDb, async (req, env, ctx) => {
 	const result = await registerForm.parseRequest(req);
 	if (!result.ok) return reply(result.error, 400);
 
-	const { name, email, password } = result.data;
+	const { name, email, password } = result.value;
 
 	const normalizedEmail = email.trim().toLowerCase();
 	if (!isEmail(normalizedEmail)) {
@@ -308,15 +314,18 @@ router.post<RequestDb>(registerForm.href, setDb, async (req, env, ctx) => {
 handler(router, "/api/v1/sessions", {
 	table: schema.sessions,
 	list: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found sessions",
 	},
+	// login is an alias of create
+	create: null,
 	read: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found session",
 	},
+	update: null,
 	delete: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		soft: false,
 		message: "Deleted session",
 	},
@@ -334,7 +343,7 @@ router.post<RequestDb>(loginForm.href, setDb, async (req, env, ctx) => {
 	const result2 = await loginForm.parseRequest(req);
 	if (!result2.ok) return reply(result2.error, 400);
 
-	const { email, password } = result2.data;
+	const { email, password } = result2.value;
 
 	const normalizedEmail = email.trim().toLowerCase();
 	if (!isEmail(normalizedEmail)) {
@@ -383,7 +392,6 @@ router.post<RequestDb>(loginForm.href, setDb, async (req, env, ctx) => {
 		"; Path=/; HttpOnly; Secure; SameSite=Lax");
 	return res;
 });
-// NO update
 
 /*
  * Newsletter system
@@ -393,25 +401,25 @@ router.post<RequestDb>(loginForm.href, setDb, async (req, env, ctx) => {
 handler(router, "/api/v1/messages", {
 	table: schema.messages,
 	list: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found messages",
 	},
 	create: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["subject", "textbody"],
 		message: "Created new message",
 	},
 	read: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found message",
 	},
 	update: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["fileId", "subject", "textbody"],
 		message: "Updated message",
 	},
 	delete: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		soft: true,
 		message: "Deleted message",
 	},
@@ -489,21 +497,21 @@ router.post<RequestUser>("/api/v1/messages/:id/send", setUser, async (req, env, 
 handler(router, "/api/v1/links", {
 	table: schema.links,
 	list: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found links",
 	},
+	create: null,
 	read: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found link",
 	},
+	update: null,
 	delete: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		soft: false,
 		message: "Deleted link",
 	},
 });
-// NO create
-// NO update
 
 /*
  * Order system
@@ -513,25 +521,25 @@ handler(router, "/api/v1/links", {
 handler(router, "/api/v1/addresses", {
 	table: schema.addresses,
 	list: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found addresses",
 	},
 	create: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["streetNumber", "street", "city", "state"],
 		message: "Created new address",
 	},
 	read: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found address",
 	},
 	update: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["streetNumber", "street", "city", "state"],
 		message: "Updated address",
 	},
 	delete: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		soft: true,
 		message: "Deleted address",
 	},
@@ -541,25 +549,25 @@ handler(router, "/api/v1/addresses", {
 handler(router, "/api/v1/categories", {
 	table: schema.categories,
 	list: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found categories",
 	},
 	create: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["fileId", "parentId", "name", "position"],
 		message: "Created new category",
 	},
 	read: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found category",
 	},
 	update: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["fileId", "parentId", "name", "position"],
 		message: "Updated category",
 	},
 	delete: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		soft: false,
 		message: "Deleted category",
 	},
@@ -569,25 +577,25 @@ handler(router, "/api/v1/categories", {
 handler(router, "/api/v1/menu_items", {
 	table: schema.menuItems,
 	list: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found menu items",
 	},
 	create: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["fileId", "categoryId", "name", "description", "price"],
 		message: "Created new menu item",
 	},
 	read: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found menu item",
 	},
 	update: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["fileId", "categoryId", "name", "description", "price"],
 		message: "Updated menu item",
 	},
 	delete: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		soft: false,
 		message: "Deleted menu item",
 	},
@@ -597,25 +605,25 @@ handler(router, "/api/v1/menu_items", {
 handler(router, "/api/v1/menu_options", {
 	table: schema.menuOptions,
 	list: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found menu options",
 	},
 	create: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["fileId", "type", "question", "price", "repeatMin", "repeatMax"],
 		message: "Created new menu option",
 	},
 	read: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found menu option",
 	},
 	update: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["fileId", "type", "question", "price", "repeatMin", "repeatMax"],
 		message: "Updated menu option",
 	},
 	delete: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		soft: false,
 		message: "Deleted menu option",
 	},
@@ -625,25 +633,25 @@ handler(router, "/api/v1/menu_options", {
 handler(router, "/api/v1/orders", {
 	table: schema.orders,
 	list: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found orders",
 	},
 	create: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["subtotal"],
 		message: "Created new order",
 	},
 	read: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found order",
 	},
 	update: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["subtotal", "tax", "total"],
 		message: "Updated order",
 	},
 	delete: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		soft: true,
 		message: "Deleted order",
 	},
@@ -653,25 +661,25 @@ handler(router, "/api/v1/orders", {
 handler(router, "/api/v1/order_items", {
 	table: schema.orderItems,
 	list: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found order items",
 	},
 	create: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["orderId", "menuItemId", "quantity", "instructions"],
 		message: "Created new order item",
 	},
 	read: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		message: "Found order item",
 	},
 	update: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		fields: ["orderId", "menuItemId", "quantity", "unitPrice", "instructions"],
 		message: "Updated order item",
 	},
 	delete: {
-		permission: adminOnly,
+		before: [setUser, adminOnly],
 		soft: false,
 		message: "Deleted order item",
 	},

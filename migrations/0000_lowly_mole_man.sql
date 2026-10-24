@@ -120,7 +120,7 @@ CREATE TABLE `messages` (
 	`view_count` integer DEFAULT 0 NOT NULL,
 	`sent_count` integer DEFAULT 0 NOT NULL,
 	`subject` text NOT NULL,
-	`s.textbody` text NOT NULL,
+	`textbody` text NOT NULL,
 	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
 	`updated_at` integer,
 	`deleted_at` integer,

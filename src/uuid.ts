@@ -11,7 +11,7 @@ export class Uuid {
   }
 
   public static randomv4(): Uuid {
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
 
     // Uuid version 4
     bytes[6] = (bytes[6] & 0x0f) | 0x40;

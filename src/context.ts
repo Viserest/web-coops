@@ -30,15 +30,14 @@ export type Db = DrizzleD1Database<typeof schema>;
 export type RequestBase = IRequest;
 
 /** After setDb: `db` is guaranteed. */
-export type RequestDb = {
+export type RequestDb = IRequest & {
 	db: Db;
-} & IRequest;
+}
 
 /** After setUser: `db` and `user` are both guaranteed. */
-export type RequestUser = {
-	db: Db;
+export type RequestUser = RequestDb & {
 	user: schema.User;
-} & IRequest;
+}
 
 export const router = AutoRouter<RequestBase, Args>({
 	// Thrown errors: log server-side only, never send the message or stack to the client
@@ -86,13 +85,13 @@ export function createSetUser<A extends AnyArgs = Args>(
 		req.db ??= createDb(env);
 
 		// Get session id
-		const cookie = getCookie(req, X_OPTIONS.SESSION_COOKIE_NAME);
-		if (!cookie) return onError(req, ...args);
+		const cookie = getCookie(req.headers, X_OPTIONS.SESSION_COOKIE_NAME);
+		if (!cookie.ok) return onError(req, ...args);
 
 		// Convert to uuid
 		let idSession: Uuid;
 		try {
-			idSession = Uuid.fromString(cookie);
+			idSession = Uuid.fromString(cookie.value);
 		} catch {
 			return onError(req, ...args);
 		}

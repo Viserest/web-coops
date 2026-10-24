@@ -7,7 +7,7 @@ import { Uuid } from "./uuid";
 import { checkRole, redirect } from "./utils";
 import * as schema from "./schema";
 import { createSetUser, RequestDb, RequestUser, router, setDb } from "./context";
-import { loginForm, registerForm, subscribeForm, unsubscribeForm } from "./apis";
+import { filesHandler, loginForm, registerForm, subscribeForm, unsubscribeForm } from "./apis";
 import { X_OPTIONS } from "./index";
 
 interface Details {
@@ -32,6 +32,17 @@ export function Page(details: Details, ...children: Node[]): Response {
 			tag("meta", { "charset": "utf-8" }),
 			tag("meta", { "name": "viewport", "content": "width=device-width, initial-scale=1" }),
 			tag("link", { "rel": "canonical", "href": url }),
+			tag("link", {
+				"rel": "icon",
+				"type": "image/png",
+				"sizes": "32x32",
+				"href": "/images/" + X_OPTIONS.PHOTO_FAVICON,
+			}),
+			tag("link", {
+				"rel": "apple-touch-icon",
+				"sizes": "180x180",
+				"href": "/images/" + X_OPTIONS.PHOTO_FAVICON_APPLE,
+			}),
 			// social sharing
 			tag("title", {}, title),
 			tag("meta", { "name": "description", "content": X_OPTIONS.DESCRIPTION }),
@@ -53,7 +64,7 @@ export function Page(details: Details, ...children: Node[]): Response {
 				);
 				const links = tag("div", { "id": "links" },
 					tag("a", { "href": "/" }, "Home"),
-					tag("a", { "href": "/menu" }, "Menu"),
+					tag("a", { "href": "/menu/home" }, "Menu"),
 					tag("a", { "href": "/account/dashboard" }, "Rewards"),
 				);
 				// option: none
@@ -65,22 +76,25 @@ export function Page(details: Details, ...children: Node[]): Response {
 					return tag("div", {},
 						headers,
 						tag("div", { "id": "hero" },
-							tag("img", { "src": "/images/logo.png", "alt": "Coop's Pizzeria Logo" }),
+							tag("img", {
+								"src": X_OPTIONS.S3_BUCKET_URL + X_OPTIONS.PHOTO_LOGO,
+								"alt": "Coop's Pizzeria Logo",
+							}),
 							tag("h1", {}, "Taste The Difference"),
 						),
 						links,
 					);
 				}
 				// default: small logo, headers, links
-				return tag("div", {},
-					tag("div", { "id": "blah" },
+				return tag("div", { "class": "row" },
+					tag("div", { "class": "two columns offset-by-one" },
 						tag("img", {
-							"src": "/images/logo.png",
+							"src": X_OPTIONS.S3_BUCKET_URL + X_OPTIONS.PHOTO_LOGO,
 							"alt": "Coop's Pizzeria Logo",
 							"class": "u-full-width",
 						}),
 					),
-					tag("div", {},
+					tag("div", { "class": "six columns" },
 						headers,
 						links,
 					),
@@ -221,11 +235,91 @@ router.get("/", (req, env, ctx) => {
 
 router.get("/menu", (req, env, ctx) => redirect("/menu/home"));
 
-router.get<RequestDb>("/menu/:category+", setDb, (req, env, ctx) => {
+router.get<RequestDb>("/menu/:category+", setDb, async (req, env, ctx) => {
 	const category = req.params["category"];
+	const isHome = category === "home";
+
+	let current: schema.Category | undefined;
+	let children: schema.Category[];
+	let items: schema.MenuItem[] = [];
+
+	if (isHome) {
+		children = await req.db
+			.select()
+			.from(schema.categories)
+			.where(d.isNull(schema.categories.parentId));
+	} else {
+		// `:category+` can match "a/b", so use the last segment as the name
+		const name = category.split("/").pop()!;
+
+		[current] = await req.db
+			.select()
+			.from(schema.categories)
+			.where(d.eq(schema.categories.name, name))
+			.limit(1);
+
+		if (!current) return new Response("Category not found", { status: 404 });
+
+		children = await req.db
+			.select()
+			.from(schema.categories)
+			.where(d.eq(schema.categories.parentId, current.id));
+
+		items = await req.db
+			.select()
+			.from(schema.menuItems)
+			.where(d.eq(schema.menuItems.categoryId, current.id));
+	}
+
+	// first two levels of the tree for the sidebar
+	const roots = await req.db
+		.select()
+		.from(schema.categories)
+		.where(d.isNull(schema.categories.parentId));
+
+	const subs = roots.length
+		? await req.db
+				.select()
+				.from(schema.categories)
+				.where(d.inArray(schema.categories.parentId, roots.map((r) => r.id)))
+		: [];
 
 	return Page({},
 		tag("h1", {}, category),
+		tag("div", { "class": "row" },
+			tag("div", { "class": "three columns" },
+				tag("ul", {},
+					...roots.map((root) =>
+						tag("li", {},
+							tag("a", { href: `/menu/${root.name}` }, root.name),
+							tag("ul", {},
+								...subs
+									.filter((s) => s.parentId === root.id)
+									.map((s) =>
+										tag("li", {},
+											tag("a", { href: `/menu/${s.name}` }, s.name),
+										),
+									),
+							),
+						),
+					),
+				),
+			),
+			tag("div", { "class": "nine columns" },
+				tag("ul", {},
+					...children.map((c) =>
+						tag("li", {}, tag("a", { href: `/menu/${c.name}` }, c.name)),
+					),
+				),
+				...(items.length
+					? [
+							tag("ul", {},
+								...items.map((item) => tag("li", {}, item.name)),
+							),
+						]
+					: []),
+			),
+		),
 	);
 });
 
@@ -302,6 +396,7 @@ router.get<RequestUser>(
 			// Show admin dashboard
 			return Page({ title: "Dashboard" },
 				tag("h1", {}, "Admin Dashboard"),
+				filesHandler.renderAll() as unknown as Node,
 			);
 		}
 		throw new StatusError(404);

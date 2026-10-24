@@ -1,6 +1,40 @@
 # Coop's Pizzeria Website
 
-[View](https://coopspizzeria.com)
+https://coopspizzeria.com
+
+Coop's Pizzeria's website using:
+- Cloudflare Workers
+	- https://developers.cloudflare.com/workers/
+- R2 Buckets (Cloudflare's S3 Buckets)
+	- https://developers.cloudflare.com/r2/
+- D1 Database (Cloudflare's Sqlite Database)
+	- https://developers.cloudflare.com/d1/
+
+## Newsletter
+
+Using Cloudflare Send Email
+- https://developers.cloudflare.com/email-service/get-started/send-emails/
+
+## Ordering
+
+### Payment
+
+Using Stripe Payments with Link
+- https://docs.stripe.com/payments/link
+
+### Pickup
+
+### Delivery
+
+Services:
+- [ ]: Doordash
+  - https://developer.doordash.com/en-US/docs/drive/tutorials/get_started/
+- [ ]: Grubhub
+	- https://developer.grubhub.com/
+- [ ]: Eatstreet
+	- Dont have dev docs
+- [ ]: Uber Eats
+	- https://developer.uber.com/docs/eats/introduction
 
 ## Webpages
 

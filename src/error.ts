@@ -1,6 +1,7 @@
 import { html } from "itty-router";
+
 import { tag } from "./tag";
-import { esc } from "./utils";
+import { escape } from "./utils";
 
 const TITLES: Record<number, string> = {
 	400: "Bad Request",
@@ -21,7 +22,7 @@ export const rendered = new WeakSet<Response>();
 
 export function errorPage(status: number, request: Request): Response {
 	const url = new URL(request.url);
-	const shownUrl = esc(url.origin + url.pathname); // no query string or hash
+	const shownUrl = escape(url.origin + url.pathname); // no query string or hash
 	const title = TITLES[status] ?? "Error";
 
 	const res = html("<!DOCTYPE html>" + tag("html", { "lang": "en" },
@@ -29,7 +30,7 @@ export function errorPage(status: number, request: Request): Response {
 			tag("meta", { "charset": "utf-8" }),
 			tag("meta", { "name": "viewport", "content": "width=device-width, initial-scale=1" }),
 			tag("meta", { "name": "robots", "content": "noindex" }),
-			tag("title", {}, status + " " + esc(title)),
+			tag("title", {}, status + " " + escape(title)),
 			tag("style", {}, `body { font-family: system-ui, sans-serif; margin: 0; min-height: 100vh;
 				display: grid; place-items: center; text-align: center; }
 				h1 { font-size: 1.25rem; margin: 0 0 1rem; }
@@ -40,7 +41,7 @@ export function errorPage(status: number, request: Request): Response {
 			tag("main", {},
 				tag("h1", {}, "Something went wrong"),
 				tag("p", { "class": "code" }, status),
-				tag("p", {}, esc(title)),
+				tag("p", {}, escape(title)),
 				tag("p", { "class": "url" }, shownUrl),
 			),
 		),
