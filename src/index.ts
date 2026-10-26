@@ -1,6 +1,6 @@
 
-import { router } from "./context";
-import { errorPage } from "./error";
+import { router, errorPage } from "webutils";
+
 import "./pages";
 import "./apis";
 

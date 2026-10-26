@@ -1,12 +1,10 @@
 
-import { AutoRouter, IRequest, RequestHandler } from "itty-router";
+import { IRequest, RequestHandler } from "itty-router";
 import { DrizzleD1Database } from "drizzle-orm/d1";
 import * as d from "drizzle-orm";
+import { Uuid, getCookie, reply, errorPage, rendered, createD1Database } from "webutils";
 
-import { Uuid } from "./uuid";
-import { createDb, getCookie, reply } from "./utils";
 import * as schema from "./schema";
-import { errorPage, rendered } from "./error";
 import { X_OPTIONS } from "./index";
 
 export interface Bindings {
@@ -38,24 +36,6 @@ export type RequestDb = IRequest & {
 export type RequestUser = RequestDb & {
 	user: schema.User;
 }
-
-export const router = AutoRouter<RequestBase, Args>({
-	// Thrown errors: log server-side only, never send the message or stack to the client
-	catch: (err: any, request) => {
-		console.error(err);
-		const s = err?.status;
-		const status = Number.isInteger(s) && s >= 400 && s < 600 ? s : 500;
-		return errorPage(status, request);
-	},
-	// Runs after AutoRouter's own missing (404) and format steps,
-	// so every error response ends up as the page
-	finally: [
-		(res: Response, request) =>
-			res instanceof Response && res.status >= 400 && !rendered.has(res)
-				? errorPage(res.status, request)
-				: res,
-	],
-});
 
 /** Builds a middleware that attaches `req.db`. Never rejects. */
 export function createSetDb<A extends AnyArgs = Args>(): RequestHandler<RequestBase, A> {
