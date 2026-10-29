@@ -1,10 +1,10 @@
 
 import * as d from "drizzle-orm";
-import { router, Uuid, tag, defineForm, handler, hashPassword, isAsciiOrSpace, isEmail, nowSecs, reply, verifyPassword } from "webutils";
+import { Uuid, tag, defineForm, hashPassword, isAsciiOrSpace, isEmail, nowSecs, reply, verifyPassword } from "webutils";
 
 import { adminOnly, checkRole } from "./utils";
 import * as schema from "./schema";
-import { RequestDb, RequestUser, setDb, setUser } from "./context";
+import { handler, RequestDb, RequestUser, routerApi, setDb, setUser } from "./context";
 import { X_OPTIONS } from "./index";
 
 /*
@@ -12,7 +12,7 @@ import { X_OPTIONS } from "./index";
  */
 
 // Files
-export const filesHandler = handler(router, "/api/v1/files", {
+export const filesHandler = handler(routerApi, "/api/v1/files", {
 	table: schema.files,
 	list: {
 		before: [setUser, adminOnly],
@@ -20,7 +20,7 @@ export const filesHandler = handler(router, "/api/v1/files", {
 	},
 	create: {
 		before: [setUser, adminOnly],
-		handler: async(req, env, ctx) => {
+		handler: async (req, env, ctx) => {
 			if (!checkRole(req.user, schema.Role.Admin)) {
 				return reply("Unauthorized", 403);
 			}
@@ -137,7 +137,7 @@ export const filesHandler = handler(router, "/api/v1/files", {
 	update: null,
 	delete: {
 		before: [setUser, adminOnly],
-		handler: async(req, env, ctx) => {
+		handler: async (req, env, ctx) => {
 			if (!checkRole(req.user, schema.Role.Admin)) {
 				return reply("Unauthorized", 403);
 			}
@@ -155,7 +155,10 @@ export const filesHandler = handler(router, "/api/v1/files", {
 			// delete from d1
 			const result = await req.db
 				.delete(schema.files)
-				.where(d.eq(schema.files.id, id.toBytes()))
+				.where(d.eq(
+					schema.files.id,
+					Buffer.from(id.toBytes()),
+				))
 				.run();
 			if (!result.success) return reply("Error deleting file", 500);
 
@@ -178,7 +181,7 @@ export const subscribeForm = defineForm({
 		email: { type: "email", placeholder: "john@smith.com" },
 	},
 });
-router.post<RequestDb>(subscribeForm.href, setDb, async (req, env, ctx) => {
+routerApi.post<RequestDb>(subscribeForm.href, setDb, async (req, env, ctx) => {
 	const result2 = await subscribeForm.parseRequest(req);
 	if (!result2.ok) return reply(result2.error, 400);
 
@@ -191,7 +194,7 @@ router.post<RequestDb>(subscribeForm.href, setDb, async (req, env, ctx) => {
 	const result = await req.db
 		.insert(schema.users)
 		.values({
-			id: Uuid.randomv4().toBytes(),
+			id: Buffer.from(Uuid.randomv4().toBytes()),
 			name,
 			email,
 			role: schema.Role.Subscriber,
@@ -207,7 +210,7 @@ export const unsubscribeForm = defineForm({
 	method: "POST",
 	fields: {},
 });
-router.post<RequestDb>(unsubscribeForm.href, setDb, async (req, env, ctx) => {
+routerApi.post<RequestDb>(unsubscribeForm.href, setDb, async (req, env, ctx) => {
 	const data: { id_link: string | null } = await req.json();
 
 	// Id of link
@@ -226,7 +229,10 @@ router.post<RequestDb>(unsubscribeForm.href, setDb, async (req, env, ctx) => {
 		.set({ deletedAt: new Date() })
 		.from(schema.links)
 		.where(d.and(
-    	d.eq(schema.links.id, id_link.toBytes()),
+			d.eq(
+				schema.links.id,
+				Buffer.from(id_link.toBytes()),
+			),
 			d.eq(schema.links.userId, schema.users.id),
 	))
 		.run();
@@ -236,7 +242,7 @@ router.post<RequestDb>(unsubscribeForm.href, setDb, async (req, env, ctx) => {
 });
 
 // Users
-handler(router, "/api/v1/users", {
+handler(routerApi, "/api/v1/users", {
 	table: schema.users,
 	list: {
 		before: [setUser, adminOnly],
@@ -269,7 +275,7 @@ export const registerForm = defineForm({
 		password: { type: "password", placeholder: "Password" },
 	},
 });
-router.post<RequestDb>(registerForm.href, setDb, async (req, env, ctx) => {
+routerApi.post<RequestDb>(registerForm.href, setDb, async (req, env, ctx) => {
 	const result = await registerForm.parseRequest(req);
 	if (!result.ok) return reply(result.error, 400);
 
@@ -291,7 +297,7 @@ router.post<RequestDb>(registerForm.href, setDb, async (req, env, ctx) => {
 	const inserted = await req.db
 		.insert(schema.users)
 		.values({
-			id: Uuid.randomv4().toBytes(),
+			id: Buffer.from(Uuid.randomv4().toBytes()),
 			name: name.trim(),
 			email: normalizedEmail,
 			password: passwordHash,
@@ -308,7 +314,7 @@ router.post<RequestDb>(registerForm.href, setDb, async (req, env, ctx) => {
 });
 
 // Sessions
-handler(router, "/api/v1/sessions", {
+handler(routerApi, "/api/v1/sessions", {
 	table: schema.sessions,
 	list: {
 		before: [setUser, adminOnly],
@@ -336,7 +342,7 @@ export const loginForm = defineForm({
 		password: { type: "password", placeholder: "Password" },
 	},
 });
-router.post<RequestDb>(loginForm.href, setDb, async (req, env, ctx) => {
+routerApi.post<RequestDb>(loginForm.href, setDb, async (req, env, ctx) => {
 	const result2 = await loginForm.parseRequest(req);
 	if (!result2.ok) return reply(result2.error, 400);
 
@@ -373,7 +379,7 @@ router.post<RequestDb>(loginForm.href, setDb, async (req, env, ctx) => {
 	const session = await req.db
 		.insert(schema.sessions)
 		.values({
-			id: Uuid.randomv4().toBytes(),
+			id: Buffer.from(Uuid.randomv4().toBytes()),
 			userId: user.id,
 			expiresAt: new Date(Date.now() + X_OPTIONS.SESSION_COOKIE_EXPIRE * 1000),
 		})
@@ -395,7 +401,7 @@ router.post<RequestDb>(loginForm.href, setDb, async (req, env, ctx) => {
  */
 
 // Messages
-handler(router, "/api/v1/messages", {
+handler(routerApi, "/api/v1/messages", {
 	table: schema.messages,
 	list: {
 		before: [setUser, adminOnly],
@@ -422,7 +428,7 @@ handler(router, "/api/v1/messages", {
 	},
 });
 // Send an email message
-router.post<RequestUser>("/api/v1/messages/:id/send", setUser, async (req, env, ctx) => {
+routerApi.post<RequestUser>("/api/v1/messages/:id/send", setUser, async (req, env, ctx) => {
 	const data: { id_to?: string } = await req.json();
 
 	const a = req.params["id"];
@@ -433,7 +439,10 @@ router.post<RequestUser>("/api/v1/messages/:id/send", setUser, async (req, env, 
 	const message = await req.db
 		.select({ ...d.getTableColumns(schema.messages) })
 		.from(schema.messages)
-		.where(d.eq(schema.messages.id, messageId.toBytes()))
+		.where(d.eq(
+			schema.messages.id,
+			Buffer.from(messageId.toBytes()),
+		))
 		.limit(1)
 		.get();
 	if (!message) return reply("Error finding message", 500);
@@ -443,9 +452,9 @@ router.post<RequestUser>("/api/v1/messages/:id/send", setUser, async (req, env, 
 		const link = await req.db
 			.insert(schema.links)
 			.values({
-				id: linkId.toBytes(),
-				userId: user.id,
-				messageId: messageId.toBytes(),
+				id: Buffer.from(linkId.toBytes()),
+				userId: Buffer.from(user.id),
+				messageId: Buffer.from(messageId.toBytes()),
 		 	})
 			.returning()
 			.get();
@@ -462,7 +471,10 @@ router.post<RequestUser>("/api/v1/messages/:id/send", setUser, async (req, env, 
 		const user = await req.db
 			.select({ ...d.getTableColumns(schema.users) })
 			.from(schema.users)
-			.where(d.eq(schema.users.id, Uuid.fromString(data.id_to).toBytes()))
+			.where(d.eq(
+				schema.users.id,
+				Buffer.from(Uuid.fromString(data.id_to).toBytes()),
+			))
 			.limit(1)
 			.get();
 		if (!user) return reply("Cannot find user", 400);
@@ -491,7 +503,7 @@ router.post<RequestUser>("/api/v1/messages/:id/send", setUser, async (req, env, 
 });
 
 // Links
-handler(router, "/api/v1/links", {
+handler(routerApi, "/api/v1/links", {
 	table: schema.links,
 	list: {
 		before: [setUser, adminOnly],
@@ -515,7 +527,7 @@ handler(router, "/api/v1/links", {
  */
 
 // Addresses
-handler(router, "/api/v1/addresses", {
+handler(routerApi, "/api/v1/addresses", {
 	table: schema.addresses,
 	list: {
 		before: [setUser, adminOnly],
@@ -543,7 +555,7 @@ handler(router, "/api/v1/addresses", {
 });
 
 // Categories
-handler(router, "/api/v1/categories", {
+handler(routerApi, "/api/v1/categories", {
 	table: schema.categories,
 	list: {
 		before: [setUser, adminOnly],
@@ -571,7 +583,7 @@ handler(router, "/api/v1/categories", {
 });
 
 // Menu Items
-handler(router, "/api/v1/menu_items", {
+handler(routerApi, "/api/v1/menu_items", {
 	table: schema.menuItems,
 	list: {
 		before: [setUser, adminOnly],
@@ -599,7 +611,7 @@ handler(router, "/api/v1/menu_items", {
 });
 
 // Menu Options
-handler(router, "/api/v1/menu_options", {
+handler(routerApi, "/api/v1/menu_options", {
 	table: schema.menuOptions,
 	list: {
 		before: [setUser, adminOnly],
@@ -627,7 +639,7 @@ handler(router, "/api/v1/menu_options", {
 });
 
 // Orders
-handler(router, "/api/v1/orders", {
+handler(routerApi, "/api/v1/orders", {
 	table: schema.orders,
 	list: {
 		before: [setUser, adminOnly],
@@ -655,7 +667,7 @@ handler(router, "/api/v1/orders", {
 });
 
 // Order Items
-handler(router, "/api/v1/order_items", {
+handler(routerApi, "/api/v1/order_items", {
 	table: schema.orderItems,
 	list: {
 		before: [setUser, adminOnly],

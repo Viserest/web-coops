@@ -1,12 +1,12 @@
 
 import { html, StatusError } from "itty-router";
 import * as d from "drizzle-orm";
-import { router, Node, tag, Uuid, redirect } from "webutils";
+import { Node, tag, Uuid, redirect } from "webutils";
 
 import { checkRole } from "./utils";
 import * as schema from "./schema";
-import { createSetUser, RequestDb, RequestUser, setDb } from "./context";
 import { filesHandler, loginForm, registerForm, subscribeForm, unsubscribeForm } from "./apis";
+import { createSetUser, RequestDb, RequestUser, routerHtml, setDb } from "./context";
 import { X_OPTIONS } from "./index";
 
 interface Details {
@@ -112,7 +112,7 @@ export function Page(details: Details, ...children: Node[]): Response {
 	));
 }
 
-router.get("/", (req, env, ctx) => {
+routerHtml.get("/", (req, env, ctx) => {
 	const date = (function () {
 		function next_thursday(date: Date) {
 			let a = 4 - date.getDay(); // days til thursday
@@ -232,9 +232,9 @@ router.get("/", (req, env, ctx) => {
 	); // returns Page
 });
 
-router.get("/menu", (req, env, ctx) => redirect("/menu/home"));
+routerHtml.get("/menu", (req, env, ctx) => redirect("/menu/home"));
 
-router.get<RequestDb>("/menu/:category+", setDb, async (req, env, ctx) => {
+routerHtml.get<RequestDb>("/menu/:category+", setDb, async (req, env, ctx) => {
 	const category = req.params["category"];
 	const isHome = category === "home";
 
@@ -322,7 +322,7 @@ router.get<RequestDb>("/menu/:category+", setDb, async (req, env, ctx) => {
 	);
 });
 
-router.get<RequestDb>("/newsletter/:id_link", setDb, async (req, env, ctx) => {
+routerHtml.get<RequestDb>("/newsletter/:id_link", setDb, async (req, env, ctx) => {
 	// params
 	const id_link = Uuid.fromString(req.params["id_link"]);
 
@@ -331,7 +331,10 @@ router.get<RequestDb>("/newsletter/:id_link", setDb, async (req, env, ctx) => {
   	.select({ ...d.getTableColumns(schema.messages) })
   	.from(schema.messages)
   	.innerJoin(schema.links, d.eq(schema.messages.id, schema.links.messageId))
-  	.where(d.eq(schema.links.id, id_link.toBytes()))
+		.where(d.eq(
+			schema.links.id,
+			Buffer.from(id_link.toBytes()),
+		))
   	.limit(1)
   	.get();
 	if (!result) {
@@ -347,7 +350,7 @@ router.get<RequestDb>("/newsletter/:id_link", setDb, async (req, env, ctx) => {
 	);
 });
 
-router.get("/confirm/:id_link", (req, env, ctx) => {
+routerHtml.get("/confirm/:id_link", (req, env, ctx) => {
 	const id_link = req.params["id_link"];
 	return Page({ title: "Newsletter" },
 		tag("h2", {}, "Unsubscribe From Our Newsletter"),
@@ -357,9 +360,9 @@ router.get("/confirm/:id_link", (req, env, ctx) => {
 	);
 });
 
-router.get("/account", (req, env, ctx) => redirect("/account/dashboard"));
+routerHtml.get("/account", (req, env, ctx) => redirect("/account/dashboard"));
 
-router.get("/account/login", (req, env, ctx) => {
+routerHtml.get("/account/login", (req, env, ctx) => {
 	return Page({ title: "Login" },
 		tag("h1", {}, "Login"),
 		tag("a", { "href": "/account/register" }, "Register instead?"),
@@ -367,7 +370,7 @@ router.get("/account/login", (req, env, ctx) => {
 	);
 });
 
-router.get("/account/register", (req, env, ctx) => {
+routerHtml.get("/account/register", (req, env, ctx) => {
 	return Page({ title: "Register" },
 		tag("h1", {}, "Register"),
 		tag("a", { "href": "/account/login" }, "Login instead?"),
@@ -375,7 +378,7 @@ router.get("/account/register", (req, env, ctx) => {
 	);
 });
 
-router.get<RequestUser>(
+routerHtml.get<RequestUser>(
 	"/account/dashboard",
 	createSetUser(() => redirect("/account/login")),
 	(req, env, ctx) => {
@@ -385,7 +388,7 @@ router.get<RequestUser>(
 	}
 );
 
-router.get<RequestUser>(
+routerHtml.get<RequestUser>(
 	"/account/admin",
 	createSetUser(() => {
 		throw new StatusError(404);

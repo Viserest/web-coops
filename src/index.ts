@@ -1,6 +1,8 @@
 
-import { router, errorPage } from "webutils";
+import { errorPage, reply } from "webutils";
+import { ownsPath } from "webutils/router";
 
+import { routerApi, routerHtml } from "./context";
 import "./pages";
 import "./apis";
 
@@ -37,7 +39,7 @@ export const X_OPTIONS = {
 	  ["salad.jpg", "Salad"],
 	  ["sandwich.jpg", "Sandwich"],
 	  ["wings_mesh.jpg", "Wings on mesh"],
-		["pasta.jpg", "Pasta"]
+		["pasta.jpg", "Pasta"],
 	],
 	PHOTOS_OPENMIC: [
 		["open_mic_1.png", "Open Mic 1"],
@@ -46,13 +48,21 @@ export const X_OPTIONS = {
 };
 
 export default {
-	async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+	async fetch(req, env, ctx) {
+		// First router that has a route for this path wins. Unmatched paths go to the
+		// HTML router, so they get the HTML 404 page.
+		const api = !ownsPath(routerHtml, req) && ownsPath(routerApi, req);
 		try {
-			return await router.fetch(request, env, ctx);
+			return await (api ? routerApi : routerHtml).fetch(req, env, ctx);
 		} catch (err) {
-			// Safety net for anything that escapes the router
 			console.error(err);
-			return errorPage(500, request);
+			if (api) return reply("Internal server error", 500);
+			try {
+				return errorPage(500, req);
+			} catch (err2) {
+				console.error(err2);
+				return new Response("Internal server error", { status: 500 });
+			}
 		}
 	},
 } satisfies ExportedHandler<Env>;

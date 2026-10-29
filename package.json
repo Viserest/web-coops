@@ -18,8 +18,8 @@
     "wrangler": "^4.151.3"
   },
   "dependencies": {
-    "webutils": "file:../webutils",
     "drizzle-orm": "^0.45.4",
-    "itty-router": "^5.0.24"
+    "itty-router": "^5.0.24",
+    "webutils": "file:../webutils/webutils-1.0.0.tgz"
   }
 }

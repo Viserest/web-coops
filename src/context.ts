@@ -1,11 +1,17 @@
 
 import { IRequest, RequestHandler } from "itty-router";
-import { DrizzleD1Database } from "drizzle-orm/d1";
+import { drizzle, DrizzleD1Database } from "drizzle-orm/d1";
 import * as d from "drizzle-orm";
-import { Uuid, getCookie, reply, errorPage, rendered, createD1Database } from "webutils";
+import { Uuid, getCookie, reply } from "webutils";
 
 import * as schema from "./schema";
 import { X_OPTIONS } from "./index";
+import { createRouterApi, createRouterHtml } from "webutils/router";
+import { createHandlers } from "webutils/handler";
+
+//
+// Environment arguments
+//
 
 export interface Bindings {
 	DB: D1Database;
@@ -25,22 +31,39 @@ export type AnyArgs = [...Args, ...rest: any[]];
 
 export type Db = DrizzleD1Database<typeof schema>;
 
-export type RequestBase = IRequest;
+//
+// Request types
+//
 
+export type RequestBase = IRequest;
 /** After setDb: `db` is guaranteed. */
-export type RequestDb = IRequest & {
+export type RequestDb = RequestBase & {
 	db: Db;
 }
-
 /** After setUser: `db` and `user` are both guaranteed. */
 export type RequestUser = RequestDb & {
 	user: schema.User;
 }
 
+//
+// Routers
+//
+
+export const routerHtml = createRouterHtml<RequestBase, Args>();
+export const routerApi = createRouterApi<RequestBase, Args>();
+
+//
+// Handlers
+//
+
+export const { handler, op } = createHandlers<RequestBase, [Bindings, ExecutionContext]>({
+	getDb: (req, env) => (req as any).db ?? drizzle(env.DB),
+});
+
 /** Builds a middleware that attaches `req.db`. Never rejects. */
 export function createSetDb<A extends AnyArgs = Args>(): RequestHandler<RequestBase, A> {
 	return (req, ...args) => {
-		req.db ??= createDb(args[0]);
+		req.db ??= drizzle(args[0].DB);
 	};
 }
 
@@ -61,8 +84,7 @@ export function createSetUser<A extends AnyArgs = Args>(
 	onError: OnError<A> = () => reply("Unauthorized", 401),
 ): RequestHandler<RequestBase, A> {
 	return async (req, ...args) => {
-		const env = args[0];
-		req.db ??= createDb(env);
+		req.db ??= drizzle(args[0].DB);
 
 		// Get session id
 		const cookie = getCookie(req.headers, X_OPTIONS.SESSION_COOKIE_NAME);
@@ -81,7 +103,10 @@ export function createSetUser<A extends AnyArgs = Args>(
 			.select({ ...d.getTableColumns(schema.users) })
 			.from(schema.users)
 			.innerJoin(schema.sessions, d.eq(schema.users.id, schema.sessions.userId))
-			.where(d.eq(schema.sessions.id, idSession.toBytes()))
+			.where(d.eq(
+				schema.sessions.id,
+				Buffer.from(idSession.toBytes()),
+			))
 			.limit(1)
 			.get();
 		if (!result) return onError(req, ...args);
